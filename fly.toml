@@ -1,0 +1,18 @@
+# Fly.io 배포 설정
+# 앱 이름은 `fly launch` 시 자동 생성되거나 아래에서 수정하세요
+app = 'etf-rebalancer'
+primary_region = 'nrt'  # 도쿄 (한국에서 가장 가까운 Fly.io 리전)
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

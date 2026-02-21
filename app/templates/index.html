@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ETF 리밸런싱 계산기</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- 헤더 -->
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <rect x="2" y="16" width="5" height="10" rx="1" fill="currentColor" opacity="0.4"/>
+              <rect x="9" y="11" width="5" height="15" rx="1" fill="currentColor" opacity="0.6"/>
+              <rect x="16" y="6" width="5" height="20" rx="1" fill="currentColor" opacity="0.8"/>
+              <rect x="23" y="2" width="5" height="24" rx="1" fill="currentColor"/>
+            </svg>
+          </div>
+          <div>
+            <h1>ETF 리밸런싱 계산기</h1>
+            <p class="subtitle">적립식 투자 비율을 자동으로 맞춰드립니다</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- 예산 입력 -->
+      <section class="card budget-card">
+        <div class="card-header">
+          <h2>💰 이번 달 투자 예산</h2>
+        </div>
+        <div class="budget-input-wrap">
+          <span class="currency-symbol">₩</span>
+          <input type="text" id="budget" class="budget-input" placeholder="1,000,000" 
+                 inputmode="numeric" autocomplete="off">
+        </div>
+      </section>
+
+      <!-- ETF 목록 -->
+      <section class="card">
+        <div class="card-header">
+          <h2>📊 ETF 포트폴리오</h2>
+          <div class="ratio-badge" id="ratioTotal">
+            <span id="ratioValue">0</span>%
+          </div>
+        </div>
+
+        <div class="etf-table-header">
+          <span class="col-name">ETF 이름</span>
+          <span class="col-price">현재가 (₩)</span>
+          <span class="col-qty">보유 수량</span>
+          <span class="col-ratio">목표 비율 (%)</span>
+          <span class="col-action"></span>
+        </div>
+
+        <div id="etfList" class="etf-list">
+          <!-- JS로 동적 생성 -->
+        </div>
+
+        <button class="btn btn-add" id="addBtn" type="button">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          ETF 추가
+        </button>
+      </section>
+
+      <!-- 계산 버튼 -->
+      <button class="btn btn-calculate" id="calcBtn" type="button">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M4 10h12M10 4v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" transform="rotate(45 10 10)"/>
+        </svg>
+        리밸런싱 계산하기
+      </button>
+
+      <!-- 오류 메시지 -->
+      <div class="error-box" id="errorBox" style="display:none">
+        <span id="errorMsg"></span>
+      </div>
+
+      <!-- 결과 영역 -->
+      <section class="card result-card" id="resultSection" style="display:none">
+        <div class="card-header">
+          <h2>📋 매수 계획</h2>
+        </div>
+
+        <!-- 요약 카드들 -->
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span class="summary-label">현재 총 보유액</span>
+            <span class="summary-value" id="sumHeld">-</span>
+          </div>
+          <div class="summary-item accent">
+            <span class="summary-label">이번 달 매수액</span>
+            <span class="summary-value" id="sumBuy">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">매수 후 총 자산</span>
+            <span class="summary-value" id="sumFinal">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">남은 예산</span>
+            <span class="summary-value" id="sumRemain">-</span>
+          </div>
+        </div>
+
+        <!-- 상세 결과 테이블 -->
+        <div class="result-table-wrap">
+          <table class="result-table">
+            <thead>
+              <tr>
+                <th>ETF</th>
+                <th>현재가</th>
+                <th>보유</th>
+                <th>현재 비율</th>
+                <th class="highlight-col">매수 수량</th>
+                <th class="highlight-col">매수 금액</th>
+                <th>최종 수량</th>
+                <th>최종 비율</th>
+                <th>목표 비율</th>
+              </tr>
+            </thead>
+            <tbody id="resultBody">
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 비율 비교 차트 -->
+        <div class="chart-section">
+          <h3>비율 비교</h3>
+          <div id="chartArea" class="chart-area"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>ETF 리밸런싱 계산기 &middot; 투자 판단의 참고용으로만 사용하세요</p>
+    </footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
