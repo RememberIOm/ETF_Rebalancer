@@ -27,6 +27,24 @@
             <p class="subtitle">적립식 투자 비율을 자동으로 맞춰드립니다</p>
           </div>
         </div>
+        <!-- Export / Import 버튼 -->
+        <div class="data-actions">
+          <button class="btn-icon" id="exportBtn" type="button" title="데이터 내보내기">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 1v8M3 5l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M1 10v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            내보내기
+          </button>
+          <button class="btn-icon" id="importBtn" type="button" title="데이터 불러오기">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 9V1M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M1 10v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            불러오기
+          </button>
+          <input type="file" id="importFile" class="hidden-input" accept=".json">
+        </div>
       </div>
     </header>
 
@@ -38,7 +56,7 @@
         </div>
         <div class="budget-input-wrap">
           <span class="currency-symbol">₩</span>
-          <input type="text" id="budget" class="budget-input" placeholder="1,000,000" 
+          <input type="text" id="budget" class="budget-input" placeholder="1,000,000"
                  inputmode="numeric" autocomplete="off">
         </div>
       </section>
@@ -53,16 +71,14 @@
         </div>
 
         <div class="etf-table-header">
-          <span class="col-name">ETF 이름</span>
-          <span class="col-price">현재가 (₩)</span>
-          <span class="col-qty">보유 수량</span>
-          <span class="col-ratio">목표 비율 (%)</span>
-          <span class="col-action"></span>
+          <span>ETF 이름</span>
+          <span>현재가 (₩)</span>
+          <span>보유 수량</span>
+          <span>목표 비율 (%)</span>
+          <span></span>
         </div>
 
-        <div id="etfList" class="etf-list">
-          <!-- JS로 동적 생성 -->
-        </div>
+        <div id="etfList" class="etf-list"></div>
 
         <button class="btn btn-add" id="addBtn" type="button">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -74,9 +90,6 @@
 
       <!-- 계산 버튼 -->
       <button class="btn btn-calculate" id="calcBtn" type="button">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <path d="M4 10h12M10 4v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" transform="rotate(45 10 10)"/>
-        </svg>
         리밸런싱 계산하기
       </button>
 
@@ -91,7 +104,6 @@
           <h2>📋 매수 계획</h2>
         </div>
 
-        <!-- 요약 카드들 -->
         <div class="summary-grid">
           <div class="summary-item">
             <span class="summary-label">현재 총 보유액</span>
@@ -111,7 +123,6 @@
           </div>
         </div>
 
-        <!-- 상세 결과 테이블 -->
         <div class="result-table-wrap">
           <table class="result-table">
             <thead>
@@ -127,12 +138,10 @@
                 <th>목표 비율</th>
               </tr>
             </thead>
-            <tbody id="resultBody">
-            </tbody>
+            <tbody id="resultBody"></tbody>
           </table>
         </div>
 
-        <!-- 비율 비교 차트 -->
         <div class="chart-section">
           <h3>비율 비교</h3>
           <div id="chartArea" class="chart-area"></div>
@@ -143,6 +152,9 @@
     <footer class="footer">
       <p>ETF 리밸런싱 계산기 &middot; 투자 판단의 참고용으로만 사용하세요</p>
     </footer>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
   </div>
 
   <script src="/static/app.js"></script>

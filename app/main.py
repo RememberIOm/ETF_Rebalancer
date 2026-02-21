@@ -26,7 +26,7 @@ class ETFHolding(BaseModel):
     name: str               # ETF 이름/티커
     current_price: float     # 현재가 (원 또는 달러)
     held_quantity: int       # 현재 보유 수량
-    target_ratio: float      # 목표 비율 (%, 0~100)
+    target_ratio: float      # 목표 비율 (%, 0~100, 0=더 이상 매수하지 않음)
 
 
 class RebalanceRequest(BaseModel):
@@ -158,6 +158,12 @@ async def rebalance(request: RebalanceRequest):
         return JSONResponse(
             status_code=400,
             content={"detail": f"목표 비율의 합이 100%가 아닙니다 (현재: {total_ratio:.1f}%)"},
+        )
+
+    if any(h.target_ratio < 0 for h in request.holdings):
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "목표 비율은 0% 이상이어야 합니다"},
         )
 
     if request.monthly_budget <= 0:

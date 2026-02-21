@@ -1,5 +1,7 @@
 /**
  * ETF 리밸런싱 계산기 — 프론트엔드 로직
+ * - 0% 비율 허용 (더 이상 매수하지 않을 ETF)
+ * - Export/Import JSON 기능
  */
 
 // ========== 상태 관리 ==========
@@ -7,19 +9,18 @@
 let etfRows = [];
 let nextId = 0;
 
-// 기본 ETF 프리셋 (한국 인기 ETF)
+// 기본 ETF 프리셋
 const PRESETS = [
-  { name: 'KODEX 200',        price: '',  qty: '', ratio: '40' },
-  { name: 'TIGER 미국S&P500',  price: '',  qty: '', ratio: '30' },
-  { name: 'KODEX 미국나스닥100', price: '',  qty: '', ratio: '20' },
-  { name: 'TIGER 단기채권',     price: '',  qty: '', ratio: '10' },
+  { name: 'KODEX 200',          price: '', qty: '', ratio: '40' },
+  { name: 'TIGER 미국S&P500',   price: '', qty: '', ratio: '30' },
+  { name: 'KODEX 미국나스닥100',  price: '', qty: '', ratio: '20' },
+  { name: 'TIGER 단기채권',      price: '', qty: '', ratio: '10' },
 ];
 
 
 // ========== 초기화 ==========
 
 document.addEventListener('DOMContentLoaded', () => {
-  // 프리셋 ETF 추가
   PRESETS.forEach(p => addETFRow(p));
 
   document.getElementById('addBtn').addEventListener('click', () => addETFRow());
@@ -39,6 +40,13 @@ document.addEventListener('DOMContentLoaded', () => {
       calculate();
     }
   });
+
+  // Export / Import
+  document.getElementById('exportBtn').addEventListener('click', exportData);
+  document.getElementById('importBtn').addEventListener('click', () => {
+    document.getElementById('importFile').click();
+  });
+  document.getElementById('importFile').addEventListener('change', importData);
 
   updateRatioBadge();
 });
@@ -61,12 +69,12 @@ function addETFRow(preset = null) {
   el.innerHTML = `
     <div class="input-group">
       ${isMobile ? '<label>ETF 이름</label>' : ''}
-      <input type="text" class="input" data-field="name" 
+      <input type="text" class="input" data-field="name"
              placeholder="ETF 이름" value="${preset?.name || ''}" autocomplete="off">
     </div>
     <div class="input-group">
       ${isMobile ? '<label>현재가</label>' : ''}
-      <input type="text" class="input mono" data-field="price" 
+      <input type="text" class="input mono" data-field="price"
              placeholder="0" value="${preset?.price || ''}" inputmode="numeric" autocomplete="off">
     </div>
     <div class="input-group">
@@ -106,6 +114,7 @@ function addETFRow(preset = null) {
   el.querySelector('[data-field="ratio"]').addEventListener('input', updateRatioBadge);
 
   list.appendChild(el);
+  return el;
 }
 
 
@@ -122,12 +131,106 @@ function updateRatioBadge() {
 
   badge.classList.remove('warn', 'error');
   if (Math.abs(total - 100) < 0.01) {
-    // OK
+    // OK — 정확히 100%
   } else if (total < 100) {
     badge.classList.add('warn');
   } else {
     badge.classList.add('error');
   }
+}
+
+
+// ========== Export / Import ==========
+
+/**
+ * 현재 입력 상태를 JSON 파일로 내보내기
+ */
+function exportData() {
+  const budget = document.getElementById('budget').value.replace(/[^\d]/g, '');
+  const rows = document.querySelectorAll('.etf-row');
+  const holdings = [];
+
+  for (const row of rows) {
+    holdings.push({
+      name:  row.querySelector('[data-field="name"]').value.trim(),
+      price: row.querySelector('[data-field="price"]').value.replace(/[^\d]/g, ''),
+      qty:   row.querySelector('[data-field="qty"]').value.replace(/[^\d]/g, ''),
+      ratio: row.querySelector('[data-field="ratio"]').value.trim(),
+    });
+  }
+
+  const data = {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    budget,
+    holdings,
+  };
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const date = new Date().toISOString().slice(0, 10);
+  a.download = `etf-portfolio-${date}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast('데이터를 내보냈습니다');
+}
+
+
+/**
+ * JSON 파일에서 데이터 불러오기
+ */
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const data = JSON.parse(evt.target.result);
+
+      if (!data.holdings || !Array.isArray(data.holdings)) {
+        showError('올바르지 않은 파일 형식입니다.');
+        return;
+      }
+
+      // 예산 복원
+      if (data.budget) {
+        const budgetInput = document.getElementById('budget');
+        budgetInput.value = Number(data.budget) ? Number(data.budget).toLocaleString() : '';
+      }
+
+      // 기존 ETF 행 제거
+      document.getElementById('etfList').innerHTML = '';
+      etfRows = [];
+      nextId = 0;
+
+      // ETF 행 복원
+      for (const h of data.holdings) {
+        const el = addETFRow({
+          name:  h.name || '',
+          price: h.price ? Number(h.price).toLocaleString() : '',
+          qty:   h.qty || '',
+          ratio: h.ratio || '0',
+        });
+      }
+
+      updateRatioBadge();
+      showToast(`${data.holdings.length}개 ETF 데이터를 불러왔습니다`);
+
+    } catch (err) {
+      showError('파일을 읽는 중 오류가 발생했습니다.');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+
+  // 같은 파일을 다시 선택할 수 있도록 초기화
+  e.target.value = '';
 }
 
 
@@ -172,8 +275,9 @@ async function calculate() {
       return;
     }
 
-    if (isNaN(ratio) || ratio <= 0) {
-      showError(`"${name}"의 목표 비율을 입력해주세요.`);
+    // 0% 이상 허용 (0% = 더 이상 매수하지 않는 ETF)
+    if (isNaN(ratio) || ratio < 0) {
+      showError(`"${name}"의 목표 비율은 0% 이상이어야 합니다.`);
       return;
     }
 
@@ -221,6 +325,14 @@ function showError(msg) {
 }
 
 
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+
 // ========== 결과 렌더링 ==========
 
 function fmt(n) {
@@ -242,8 +354,11 @@ function renderResult(data) {
 
   data.results.forEach(r => {
     const tr = document.createElement('tr');
+    const isZero = r.target_ratio === 0;
+    const ratioClass = isZero ? 'zero-ratio' : '';
+
     tr.innerHTML = `
-      <td>${r.name}</td>
+      <td>${r.name}${isZero ? ' <small style="color:var(--text-muted)">(매수 중단)</small>' : ''}</td>
       <td>${fmt(r.current_price)}</td>
       <td>${r.held_quantity}</td>
       <td>${r.current_ratio.toFixed(1)}%</td>
@@ -251,7 +366,7 @@ function renderResult(data) {
       <td class="highlight-cell">${r.buy_amount > 0 ? '₩' + fmt(r.buy_amount) : '-'}</td>
       <td>${r.final_quantity}</td>
       <td>${r.final_ratio.toFixed(1)}%</td>
-      <td>${r.target_ratio.toFixed(1)}%</td>
+      <td class="${ratioClass}">${r.target_ratio.toFixed(1)}%</td>
     `;
     tbody.appendChild(tr);
   });
