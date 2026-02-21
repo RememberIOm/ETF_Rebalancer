@@ -1,18 +1,21 @@
-# Fly.io 배포 설정
-# 앱 이름은 `fly launch` 시 자동 생성되거나 아래에서 수정하세요
+# fly.toml app configuration file generated for etf-rebalancer on 2026-02-21T17:54:29+09:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
 app = 'etf-rebalancer'
-primary_region = 'nrt'  # 도쿄 (한국에서 가장 가까운 Fly.io 리전)
+primary_region = 'nrt'
 
 [build]
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = 'stop'
+  auto_stop_machines = true
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
   memory = '256mb'
-  cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 256
