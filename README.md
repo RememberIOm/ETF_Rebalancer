@@ -3,10 +3,15 @@
 적립식 투자자를 위한 **개인화된 ETF 포트폴리오 리밸런싱 계산기**입니다. 
 매월 투자할 예산과 현재 보유 중인 ETF, 그리고 목표 비율을 입력하면 **어떤 종목을 몇 주 매수해야 하는지** 자동으로 계산해 줍니다.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115.6-009688.svg)
-![Fly.io](https://img.shields.io/badge/Deployed_on-Fly.io-7b51b6.svg)
+![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat-square&logo=fastapi)
+![Fly.io](https://img.shields.io/badge/Deployed_on-Fly.io-7b51b6?style=flat-square&logo=fly.io&logoColor=white)
+
+<div align="center">
+
+🚀 **[etf-rebalancer.fly.dev](https://etf-rebalancer.fly.dev)**
+
+</div>
 
 ---
 
