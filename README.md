@@ -3,7 +3,7 @@
 적립식 투자자를 위한 **개인화된 ETF 포트폴리오 리밸런싱 계산기**입니다. 
 매월 투자할 예산과 현재 보유 중인 ETF, 그리고 목표 비율을 입력하면 **어떤 종목을 몇 주 매수해야 하는지** 자동으로 계산해 줍니다.
 
-![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.13+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat-square&logo=fastapi)
 ![Fly.io](https://img.shields.io/badge/Deployed_on-Fly.io-7b51b6?style=flat-square&logo=fly.io&logoColor=white)
 
@@ -41,7 +41,9 @@
 - **Vanilla JavaScript (ES6+)** (프레임워크 없이 가볍고 빠른 동작)
 
 ### Backend & Deployment
-- **Python 3.12** / **FastAPI** / **Jinja2** (정적 파일 및 템플릿 서빙)
+- **Python 3.13** / **FastAPI** / **Jinja2** (정적 파일 및 템플릿 서빙)
+- **uv** (패키지 관리 및 가상환경)
+- **ruff** (Lint & Format) / **pyright** (타입 체크)
 - **Docker** (컨테이너화)
 - **Fly.io** (클라우드 배포, Auto-stop/start 적용으로 리소스 최적화)
 
@@ -50,23 +52,20 @@
 ## 🚀 로컬 실행 방법 (Local Setup)
 
 ### 1. 요구 사항
-- Python 3.12 이상 설치
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) 설치 (`curl -LsSf https://astral.sh/uv | sh`)
+- Python 3.13은 uv가 자동으로 설치합니다.
 
 ### 2. 설치 및 실행
 ```bash
-# 1. 저장소 클론 (또는 다운로드)
+# 1. 저장소 클론
 git clone <repository-url>
 cd ETF_Rebalancer
 
-# 2. 가상환경 생성 및 활성화 (선택 사항이지만 권장)
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# 2. 의존성 설치 (uv가 Python 3.13 + 가상환경을 자동 생성)
+uv sync
 
-# 3. 의존성 패키지 설치
-pip install -r requirements.txt
-
-# 4. FastAPI 서버 실행
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# 3. FastAPI 서버 실행
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### 3. 접속
@@ -114,7 +113,8 @@ ETF_Rebalancer/
 │       └── index.html       # 메인 뷰 템플릿
 ├── Dockerfile               # 도커 빌드 설정 파일
 ├── fly.toml                 # Fly.io 배포 설정 파일
-└── requirements.txt         # 파이썬 패키지 의존성 명세
+├── pyproject.toml           # 프로젝트 설정 및 의존성
+└── uv.lock                  # 의존성 잠금 파일
 ```
 
 ---

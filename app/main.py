@@ -42,7 +42,9 @@ async def get_price(ticker: str) -> dict[str, object]:
     url = f"https://m.stock.naver.com/api/stock/{ticker}/basic"
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.get(url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
+            resp = await client.get(
+                url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"}
+            )
         except httpx.TimeoutException:
             raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다")
 
