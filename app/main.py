@@ -11,6 +11,7 @@ ETF 리밸런싱 계산기 — 메인 애플리케이션 (Stateless Server)
 - 이점: Fly.io 등 다중 사용자 환경에서 세션/파일 충돌 원천 차단
 """
 
+import re
 from pathlib import Path
 
 import httpx
@@ -36,8 +37,8 @@ async def index(request: Request) -> HTMLResponse:
 @app.get("/api/price/{ticker}")
 async def get_price(ticker: str) -> dict[str, object]:
     """Naver Finance에서 ETF 현재가 조회 (브라우저 CORS 우회용 프록시)"""
-    if not ticker.isdigit() or len(ticker) != 6:
-        raise HTTPException(status_code=400, detail="종목코드는 6자리 숫자여야 합니다")
+    if not re.fullmatch(r"[A-Za-z0-9]{6}", ticker):
+        raise HTTPException(status_code=400, detail="종목코드는 6자리 영숫자여야 합니다")
 
     url = f"https://m.stock.naver.com/api/stock/{ticker}/basic"
     async with httpx.AsyncClient() as client:

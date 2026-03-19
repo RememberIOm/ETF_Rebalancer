@@ -83,7 +83,7 @@ function addETFRow(preset = null) {
       ${isMobile ? '<label>종목코드</label>' : ''}
       <input type="text" class="input mono" data-field="ticker"
              placeholder="069500" value="${preset?.ticker || ''}"
-             maxlength="6" inputmode="numeric" autocomplete="off">
+             maxlength="6" inputmode="text" autocomplete="off">
     </div>
     <div class="input-group">
       ${isMobile ? '<label>현재가</label>' : ''}
@@ -142,7 +142,7 @@ function addETFRow(preset = null) {
 // ========== 현재가 자동 조회 ==========
 
 async function fetchPrice(ticker, priceInput) {
-  if (!/^\d{6}$/.test(ticker)) return;
+  if (!/^[A-Za-z0-9]{6}$/.test(ticker)) return;
   priceInput.classList.add('loading');
   const prevPlaceholder = priceInput.placeholder;
   priceInput.placeholder = '조회 중...';
