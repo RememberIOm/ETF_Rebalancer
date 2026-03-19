@@ -18,10 +18,10 @@ let nextId = 0;
 
 // 기본 ETF 프리셋 — JSON 업로드 전 초기 상태
 const PRESETS = [
-  { name: 'KODEX 200',          price: '', qty: '', ratio: '40' },
-  { name: 'TIGER 미국S&P500',   price: '', qty: '', ratio: '30' },
-  { name: 'KODEX 미국나스닥100',  price: '', qty: '', ratio: '20' },
-  { name: 'TIGER 단기채권',      price: '', qty: '', ratio: '10' },
+  { name: 'KODEX 200',           ticker: '069500', price: '', qty: '', ratio: '40' },
+  { name: 'TIGER 미국S&P500',    ticker: '143850', price: '', qty: '', ratio: '30' },
+  { name: 'KODEX 미국나스닥100', ticker: '379800', price: '', qty: '', ratio: '20' },
+  { name: 'TIGER 단기채권',      ticker: '157450', price: '', qty: '', ratio: '10' },
 ];
 
 
@@ -80,6 +80,12 @@ function addETFRow(preset = null) {
              placeholder="ETF 이름" value="${preset?.name || ''}" autocomplete="off">
     </div>
     <div class="input-group">
+      ${isMobile ? '<label>종목코드</label>' : ''}
+      <input type="text" class="input mono" data-field="ticker"
+             placeholder="069500" value="${preset?.ticker || ''}"
+             maxlength="6" inputmode="numeric" autocomplete="off">
+    </div>
+    <div class="input-group">
       ${isMobile ? '<label>현재가</label>' : ''}
       <input type="text" class="input mono" data-field="price"
              placeholder="0" value="${preset?.price || ''}" inputmode="numeric" autocomplete="off">
@@ -110,8 +116,16 @@ function addETFRow(preset = null) {
     updateRatioBadge();
   });
 
-  // 가격 입력 포맷팅 (콤마 자동 삽입)
+  // 종목코드 입력 시 현재가 자동 조회 (debounce 600ms)
   const priceInput = el.querySelector('[data-field="price"]');
+  const tickerInput = el.querySelector('[data-field="ticker"]');
+  let debounceTimer;
+  tickerInput.addEventListener('input', (e) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => fetchPrice(e.target.value.trim(), priceInput), 600);
+  });
+
+  // 가격 입력 포맷팅 (콤마 자동 삽입)
   priceInput.addEventListener('input', (e) => {
     const raw = e.target.value.replace(/[^\d]/g, '');
     e.target.value = raw ? Number(raw).toLocaleString() : '';
@@ -122,6 +136,30 @@ function addETFRow(preset = null) {
 
   list.appendChild(el);
   return el;
+}
+
+
+// ========== 현재가 자동 조회 ==========
+
+async function fetchPrice(ticker, priceInput) {
+  if (!/^\d{6}$/.test(ticker)) return;
+  priceInput.classList.add('loading');
+  const prevPlaceholder = priceInput.placeholder;
+  priceInput.placeholder = '조회 중...';
+  try {
+    const res = await fetch(`/api/price/${ticker}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || '조회 실패');
+    }
+    const data = await res.json();
+    priceInput.value = data.price.toLocaleString();
+  } catch (err) {
+    showToast(`현재가 조회 실패: ${err.message}`);
+  } finally {
+    priceInput.classList.remove('loading');
+    priceInput.placeholder = prevPlaceholder;
+  }
 }
 
 
@@ -160,10 +198,11 @@ function exportData() {
 
   for (const row of rows) {
     holdings.push({
-      name:  row.querySelector('[data-field="name"]').value.trim(),
-      price: row.querySelector('[data-field="price"]').value.replace(/[^\d]/g, ''),
-      qty:   row.querySelector('[data-field="qty"]').value.replace(/[^\d]/g, ''),
-      ratio: row.querySelector('[data-field="ratio"]').value.trim(),
+      name:   row.querySelector('[data-field="name"]').value.trim(),
+      ticker: row.querySelector('[data-field="ticker"]').value.trim(),
+      price:  row.querySelector('[data-field="price"]').value.replace(/[^\d]/g, ''),
+      qty:    row.querySelector('[data-field="qty"]').value.replace(/[^\d]/g, ''),
+      ratio:  row.querySelector('[data-field="ratio"]').value.trim(),
     });
   }
 
@@ -220,10 +259,11 @@ function importData(e) {
 
       for (const h of data.holdings) {
         addETFRow({
-          name:  h.name || '',
-          price: h.price ? Number(h.price).toLocaleString() : '',
-          qty:   h.qty || '',
-          ratio: h.ratio || '0',
+          name:   h.name   || '',
+          ticker: h.ticker || '',
+          price:  h.price ? Number(h.price).toLocaleString() : '',
+          qty:    h.qty    || '',
+          ratio:  h.ratio  || '0',
         });
       }
 
