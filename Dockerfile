@@ -1,4 +1,5 @@
-FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim
+# ─── Production ───────────────────────────────────────────────────────
+FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim AS production
 
 WORKDIR /app
 
@@ -13,3 +14,20 @@ COPY app/ ./app/
 EXPOSE 8080
 
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+
+# ─── Dev / Test ───────────────────────────────────────────────────────
+FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim AS dev
+
+WORKDIR /app
+
+# dev 의존성 포함 설치 (pytest, ruff, pyright 등)
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project
+
+# 앱 복사
+COPY app/ ./app/
+
+EXPOSE 8080
+
+# 기본 CMD는 hot-reload 모드; docker compose run --rm test 으로 pytest 실행 가능
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]

@@ -1,0 +1,19 @@
+services:
+  # 로컬 개발 서버 (hot-reload, 소스 마운트)
+  app:
+    build:
+      context: .
+      target: dev           # Dockerfile의 dev 스테이지 사용
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./app:/app/app      # 코드 변경 즉시 반영
+
+  # 테스트 실행 전용 서비스
+  test:
+    build:
+      context: .
+      target: dev
+    volumes:
+      - ./tests:/app/tests  # 테스트 파일 마운트
+    command: uv run pytest tests/ -v

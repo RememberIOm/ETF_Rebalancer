@@ -31,7 +31,7 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     """메인 페이지 — 단일 페이지 애플리케이션(SPA) 진입점"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/api/price/{ticker}")
