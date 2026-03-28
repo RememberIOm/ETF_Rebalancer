@@ -38,7 +38,9 @@ async def index(request: Request) -> HTMLResponse:
 async def get_price(ticker: str) -> dict[str, object]:
     """Naver Finance에서 ETF 현재가 조회 (브라우저 CORS 우회용 프록시)"""
     if not re.fullmatch(r"[A-Za-z0-9]{6}", ticker):
-        raise HTTPException(status_code=400, detail="종목코드는 6자리 영숫자여야 합니다")
+        raise HTTPException(
+            status_code=400, detail="종목코드는 6자리 영숫자여야 합니다"
+        )
 
     url = f"https://m.stock.naver.com/api/stock/{ticker}/basic"
     async with httpx.AsyncClient() as client:

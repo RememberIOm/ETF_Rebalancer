@@ -20,6 +20,9 @@ FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim AS dev
 
 WORKDIR /app
 
+# pyright(Node.js)가 필요로 하는 libatomic 설치
+RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 && rm -rf /var/lib/apt/lists/*
+
 # dev 의존성 포함 설치 (pytest, ruff, pyright 등)
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
