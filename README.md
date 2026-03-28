@@ -38,7 +38,7 @@
 
 ### Frontend
 - **HTML5 / CSS3** (CSS Variables, Flex/Grid 기반 반응형 레이아웃)
-- **Vanilla JavaScript (ES6+)** (프레임워크 없이 가볍고 빠른 동작)
+- **Vanilla JavaScript (ES2022+)** (프레임워크 없이 가볍고 빠른 동작)
 
 ### Backend & Deployment
 - **Python 3.13** / **FastAPI** / **Jinja2** (정적 파일 및 템플릿 서빙)
@@ -56,6 +56,27 @@
 - Python 3.13은 uv가 자동으로 설치합니다.
 
 ### 2. 설치 및 실행
+
+#### Docker로 실행 (권장)
+```bash
+# 1. 저장소 클론
+git clone <repository-url>
+cd ETF_Rebalancer
+
+# 2. 개발 서버 시작 (hot-reload)
+make dev
+```
+브라우저에서 `http://localhost:8080`으로 접속합니다.
+
+기타 make 명령:
+```bash
+make test   # 테스트 실행
+make lint   # ruff check + pyright
+make build  # Docker 이미지 빌드
+make clean  # 컨테이너/이미지 정리
+```
+
+#### uv로 직접 실행 (Docker 없이)
 ```bash
 # 1. 저장소 클론
 git clone <repository-url>
@@ -67,9 +88,7 @@ uv sync
 # 3. FastAPI 서버 실행
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-
-### 3. 접속
-브라우저를 열고 `http://localhost:8000`으로 접속합니다.
+브라우저에서 `http://localhost:8000`으로 접속합니다.
 
 ---
 
@@ -111,7 +130,14 @@ ETF_Rebalancer/
 │   │   └── style.css        # UI 스타일링 (Light Theme)
 │   └── templates/
 │       └── index.html       # 메인 뷰 템플릿
-├── Dockerfile               # 도커 빌드 설정 파일
+├── tests/
+│   └── test_main.py         # pytest 테스트
+├── .github/
+│   └── workflows/
+│       └── fly-deploy.yml   # GitHub Actions CI/CD
+├── Dockerfile               # 멀티 스테이지 빌드 (production, dev)
+├── docker-compose.yml       # 개발/테스트 컨테이너 설정
+├── Makefile                 # 개발 작업 단축 명령
 ├── fly.toml                 # Fly.io 배포 설정 파일
 ├── pyproject.toml           # 프로젝트 설정 및 의존성
 └── uv.lock                  # 의존성 잠금 파일
