@@ -147,7 +147,7 @@ body { font-family: var(--font-sans); background: var(--bg-primary); color: var(
 /* ---- ETF Table Header ---- */
 .etf-table-header {
   display: grid;
-  grid-template-columns: 1.5fr 0.75fr 1.1fr 0.75fr 0.75fr 40px;
+  grid-template-columns: 68px 1.5fr 0.75fr 1.1fr 0.75fr 0.75fr 40px;
   gap: 10px; padding: 0 4px 10px;
   border-bottom: 1px solid var(--border-subtle); margin-bottom: 8px;
 }
@@ -159,7 +159,7 @@ body { font-family: var(--font-sans); background: var(--bg-primary); color: var(
 /* ---- ETF Row ---- */
 .etf-row {
   display: grid;
-  grid-template-columns: 1.5fr 0.75fr 1.1fr 0.75fr 0.75fr 40px;
+  grid-template-columns: 68px 1.5fr 0.75fr 1.1fr 0.75fr 0.75fr 40px;
   gap: 10px; padding: 8px 4px; border-radius: var(--radius-sm);
   transition: background var(--transition);
   animation: slideIn 200ms ease-out;
@@ -183,6 +183,23 @@ body { font-family: var(--font-sans); background: var(--bg-primary); color: var(
 .input.loading { opacity: 0.5; cursor: wait; }
 .input::placeholder { color: var(--text-muted); }
 
+/* ---- Market Select ---- */
+.select-market {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  text-align: center;
+  padding-right: 8px;
+}
+
+/* ---- Exchange Rate Note ---- */
+.rate-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 10px;
+  padding-left: 4px;
+}
+
 /* ---- Buttons ---- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -203,6 +220,22 @@ body { font-family: var(--font-sans); background: var(--bg-primary); color: var(
   border-radius: var(--radius-sm); align-self: center;
 }
 .btn-delete:hover { background: var(--red-soft); color: var(--red); }
+
+/* ---- Buy Mode Toggle ---- */
+.qty-with-mode { display: flex; gap: 4px; align-items: stretch; }
+.qty-with-mode .input { flex: 1; min-width: 0; }
+.btn-buy-mode {
+  flex-shrink: 0; width: 26px; padding: 0;
+  font-family: var(--font-mono); font-size: 0.65rem; font-weight: 700;
+  color: var(--text-muted); background: var(--bg-secondary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; transition: all var(--transition); line-height: 1;
+}
+.btn-buy-mode[data-buy-mode="amount"] {
+  color: var(--accent); background: var(--accent-soft);
+  border-color: rgba(59,125,221,0.3);
+}
+.btn-buy-mode:hover { border-color: var(--accent); color: var(--accent); }
 
 .btn-calculate {
   width: 100%; padding: 16px; margin-bottom: 20px;
@@ -304,7 +337,7 @@ body { font-family: var(--font-sans); background: var(--bg-primary); color: var(
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
   .etf-table-header { display: none; }
   .etf-row { grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 8px; border-bottom: 1px solid var(--border-subtle); }
-  .etf-row .input-group:nth-child(1) { grid-column: 1 / -1; }
+  .etf-row .input-group:nth-child(2) { grid-column: 1 / -1; }
   .etf-row .btn-delete { grid-column: 2; justify-self: end; align-self: end; }
   .input-group label { display: block; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .result-table { font-size: 0.78rem; }
