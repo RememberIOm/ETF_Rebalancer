@@ -113,6 +113,7 @@ body { font-family: var(--font-sans); background: var(--bg-primary); color: var(
   margin-bottom: 20px;
 }
 .card-header h2 { font-size: 1rem; font-weight: 600; }
+.card-header-right { display: flex; align-items: center; gap: 8px; }
 
 /* ---- Budget Input ---- */
 .budget-input-wrap { position: relative; display: flex; align-items: center; }

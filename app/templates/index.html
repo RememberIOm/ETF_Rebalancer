@@ -65,8 +65,17 @@
       <section class="card">
         <div class="card-header">
           <h2>📊 ETF 포트폴리오</h2>
-          <div class="ratio-badge" id="ratioTotal">
-            <span id="ratioValue">0</span>%
+          <div class="card-header-right">
+            <button class="btn-icon" id="btnRefreshPrices" type="button" onclick="refreshAllPrices()">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M1 7a6 6 0 1 0 1-3.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M1 1v3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              현재가 갱신
+            </button>
+            <div class="ratio-badge" id="ratioTotal">
+              <span id="ratioValue">0</span>%
+            </div>
           </div>
         </div>
 

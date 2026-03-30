@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Path as FPath, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Path as FPath
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -133,16 +134,20 @@ async def get_price(
     match market:
         case "KR":
             if not _RE_KR.fullmatch(ticker):
-                raise HTTPException(status_code=400, detail="KR 종목코드는 6자리 영숫자여야 합니다")
+                raise HTTPException(
+                    status_code=400, detail="KR 종목코드는 6자리 영숫자여야 합니다"
+                )
         case "US":
             if not _RE_US.fullmatch(ticker):
                 raise HTTPException(
-                    status_code=400, detail="US 티커는 1~10자 영문자/숫자/특수문자(. - = ^)여야 합니다"
+                    status_code=400,
+                    detail="US 티커는 1~10자 영문자/숫자/특수문자(. - = ^)여야 합니다",
                 )
         case "CRYPTO":
             if not _RE_CRYPTO.fullmatch(ticker):
                 raise HTTPException(
-                    status_code=400, detail="암호화폐 티커는 2~10자 대문자 영문자여야 합니다"
+                    status_code=400,
+                    detail="암호화폐 티커는 2~10자 대문자 영문자여야 합니다",
                 )
 
     async with httpx.AsyncClient() as client:
@@ -164,7 +169,9 @@ async def get_rate(
     예: /api/rate/USDKRW → USD/KRW 환율 반환
     """
     if not _RE_PAIR.fullmatch(pair):
-        raise HTTPException(status_code=400, detail="환율 쌍 형식이 올바르지 않습니다 (예: USDKRW)")
+        raise HTTPException(
+            status_code=400, detail="환율 쌍 형식이 올바르지 않습니다 (예: USDKRW)"
+        )
 
     yahoo_ticker = f"{pair}=X"
     async with httpx.AsyncClient() as client:

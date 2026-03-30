@@ -315,6 +315,27 @@ async function fetchPrice(ticker, market, priceInput) {
 }
 
 
+// ========== 전체 현재가 갱신 ==========
+
+async function refreshAllPrices() {
+  const btn = document.getElementById('btnRefreshPrices');
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+
+  await Promise.allSettled(
+    Array.from(document.querySelectorAll('.etf-row')).map(row => {
+      const ticker = row.querySelector('[data-field="ticker"]')?.value.trim();
+      const market = row.querySelector('[data-field="market"]')?.value;
+      const priceInput = row.querySelector('[data-field="price"]');
+      if (!ticker || !market || !priceInput) return Promise.resolve();
+      if (!MARKET_CONFIG[market]?.tickerPattern.test(ticker)) return Promise.resolve();
+      return fetchPrice(ticker, market, priceInput);
+    })
+  );
+
+  if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+}
+
+
 function updateRatioBadge() {
   const ratioInputs = document.querySelectorAll('[data-field="ratio"]');
   let total = 0;
@@ -492,8 +513,9 @@ function importData(e) {
  */
 function calculateRebalance(holdings, budget) {
   // 현재 총 보유 금액
+  // amount 모드: held_quantity 자체가 KRW 금액이므로 price를 곱하지 않음
   const totalHeld = holdings.reduce(
-    (sum, h) => sum + h.current_price * h.held_quantity, 0
+    (sum, h) => sum + (h.buy_mode === 'amount' ? h.held_quantity : h.current_price * h.held_quantity), 0
   );
 
   // 목표 총 자산 (현재 보유 + 이번 달 예산)
@@ -501,11 +523,19 @@ function calculateRebalance(holdings, budget) {
 
   let totalBuy = 0;
   const results = holdings.map(h => {
-    const heldValue = h.current_price * h.held_quantity;
+    // amount 모드: held_quantity가 이미 KRW 금액
+    const heldValue = h.buy_mode === 'amount'
+      ? h.held_quantity
+      : h.current_price * h.held_quantity;
+    // 결과 표시를 주 단위로 통일하기 위해 KRW → 주 변환
+    const heldShares = (h.buy_mode === 'amount' && h.current_price > 0)
+      ? h.held_quantity / h.current_price
+      : h.held_quantity;
+
     const targetValue = targetTotal * (h.target_ratio / 100);
     const gap = targetValue - heldValue;
 
-    // 매수 수량 계산 (최소 0)
+    // 매수 수량 계산 (최소 0, 항상 주 단위)
     // - qty 모드: Math.floor (정수 주 단위)
     // - amount 모드: 소수 허용 (코인/소수점 주식)
     let buyQty = 0;
@@ -522,14 +552,14 @@ function calculateRebalance(holdings, budget) {
       name: h.name,
       buy_mode: h.buy_mode,
       current_price: h.current_price,
-      held_quantity: h.held_quantity,
+      held_quantity: heldShares,
       held_value: heldValue,
       target_ratio: h.target_ratio,
       current_ratio: totalHeld > 0 ? (heldValue / totalHeld * 100) : 0,
       buy_quantity: buyQty,
       buy_amount: buyAmount,
-      final_quantity: h.held_quantity + buyQty,
-      final_value: (h.held_quantity + buyQty) * h.current_price,
+      final_quantity: heldShares + buyQty,
+      final_value: (heldShares + buyQty) * h.current_price,
       final_ratio: 0, // 아래에서 계산
     };
   });
@@ -585,6 +615,8 @@ async function calculate() {
     showError('이번 달 투자 예산을 입력해주세요.');
     return;
   }
+
+  await refreshAllPrices();
 
   // ETF 데이터 수집 및 검증
   const rows = document.querySelectorAll('.etf-row');
