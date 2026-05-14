@@ -209,5 +209,10 @@ __marimo__/
 # vscode
 .vscode/
 
-# Claude code
+# AI assistant instruction/generated files
+AGENTS.md
 CLAUDE.md
+GEMINI.md
+.opencode/
+.claude/
+.agents/
