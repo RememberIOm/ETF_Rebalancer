@@ -1,5 +1,6 @@
 """ETF 리밸런싱 계산기 API 테스트"""
 
+import httpx
 from fastapi.testclient import TestClient
 from pytest_httpx import HTTPXMock
 
@@ -78,6 +79,16 @@ def test_price_valid_ticker(httpx_mock: HTTPXMock):
     assert data["market"] == "KR"
 
 
+def test_price_naver_invalid_json(httpx_mock: HTTPXMock):
+    """Naver API가 JSON이 아닌 응답을 반환하면 502"""
+    httpx_mock.add_response(
+        url="https://m.stock.naver.com/api/stock/069500/basic",
+        content=b"not-json",
+    )
+    resp = client.get("/api/price/069500")
+    assert resp.status_code == 502
+
+
 def test_price_valid_ticker_explicit_market(httpx_mock: HTTPXMock):
     """market=KR 명시 → 동일하게 동작"""
     httpx_mock.add_response(
@@ -139,6 +150,12 @@ def test_price_us_invalid_ticker():
     assert resp.status_code == 400
 
 
+def test_price_us_symbol_only_rejected():
+    """영숫자 없는 US 티커 → 400"""
+    resp = client.get("/api/price/---?market=US")
+    assert resp.status_code == 400
+
+
 def test_price_us_yahoo_not_found(httpx_mock: HTTPXMock):
     """Yahoo Finance 404 → 404 반환"""
     httpx_mock.add_response(
@@ -154,6 +171,26 @@ def test_price_us_yahoo_parse_error(httpx_mock: HTTPXMock):
     httpx_mock.add_response(
         url="https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1d",
         json=YAHOO_BAD_RESPONSE,
+    )
+    resp = client.get("/api/price/AAPL?market=US")
+    assert resp.status_code == 502
+
+
+def test_price_us_yahoo_timeout(httpx_mock: HTTPXMock):
+    """Yahoo Finance timeout → 504"""
+    httpx_mock.add_exception(
+        httpx.TimeoutException("timeout"),
+        url="https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1d",
+    )
+    resp = client.get("/api/price/AAPL?market=US")
+    assert resp.status_code == 504
+
+
+def test_price_us_yahoo_request_error(httpx_mock: HTTPXMock):
+    """Yahoo Finance 연결 오류 → 502"""
+    httpx_mock.add_exception(
+        httpx.ConnectError("connect failed"),
+        url="https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1d",
     )
     resp = client.get("/api/price/AAPL?market=US")
     assert resp.status_code == 502
@@ -253,6 +290,27 @@ def test_history_empty_prices(httpx_mock: HTTPXMock):
     assert resp.status_code == 404
 
 
+def test_history_invalid_timestamp_skipped(httpx_mock: HTTPXMock):
+    """Yahoo chart timestamp가 비정상이면 500 대신 유효 포인트 없음으로 처리"""
+    httpx_mock.add_response(
+        url="https://query1.finance.yahoo.com/v8/finance/chart/VT?interval=1d&range=1y",
+        json={
+            "chart": {
+                "result": [
+                    {
+                        "meta": {"currency": "USD"},
+                        "timestamp": ["not-a-timestamp"],
+                        "indicators": {"quote": [{"close": [120.5]}]},
+                    }
+                ],
+                "error": None,
+            }
+        },
+    )
+    resp = client.get("/api/history/VT?market=US")
+    assert resp.status_code == 404
+
+
 # ── CRYPTO 시장 ────────────────────────────────────────────────────────────────
 
 
@@ -293,6 +351,16 @@ def test_price_crypto_unknown_coin(httpx_mock: HTTPXMock):
     assert resp.status_code == 404
 
 
+def test_price_crypto_parse_error(httpx_mock: HTTPXMock):
+    """Upbit 응답 구조 오류 → 502"""
+    httpx_mock.add_response(
+        url="https://api.upbit.com/v1/ticker?markets=KRW-BTC",
+        json=[{"trade_price": None}],
+    )
+    resp = client.get("/api/price/BTC?market=CRYPTO")
+    assert resp.status_code == 502
+
+
 # ── 환율 엔드포인트 ────────────────────────────────────────────────────────────
 
 
@@ -310,6 +378,12 @@ def test_rate_usdkrw(httpx_mock: HTTPXMock):
 def test_rate_invalid_pair():
     """잘못된 환율 쌍 형식 → 400"""
     resp = client.get("/api/rate/invalid!pair")
+    assert resp.status_code == 400
+
+
+def test_rate_unsupported_pair_rejected():
+    """USDKRW 외 환율 프록시는 허용하지 않음"""
+    resp = client.get("/api/rate/EURUSD")
     assert resp.status_code == 400
 
 

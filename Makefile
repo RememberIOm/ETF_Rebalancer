@@ -15,6 +15,7 @@ test:
 lint:
 	docker compose run --rm test uv run ruff check .
 	docker compose run --rm test uv run pyright
+	docker compose run --rm test node --check app/static/app.js
 
 ## Docker 이미지 빌드
 build:

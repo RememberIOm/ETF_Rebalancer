@@ -17,4 +17,4 @@ services:
     volumes:
       - ./app:/app/app      # 테스트도 최신 앱 코드 사용
       - ./tests:/app/tests  # 테스트 파일 마운트
-    command: uv run pytest tests/ -v
+    command: sh -c "uv run pytest tests/ -v && node --test tests/js/*.test.cjs"

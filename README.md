@@ -51,6 +51,7 @@
 - **🎯 스마트 리밸런싱 알고리즘**
   - 목표 총 자산(현재 자산 + 이번 달 예산)을 기준으로 각 종목의 목표 금액을 산출합니다.
   - 예산 초과 시 비례 축소 로직이 자동으로 적용됩니다.
+  - 최종 비율은 남은 예산을 현금으로 포함한 총자산 기준으로 표시해 목표 비율과 직접 비교할 수 있습니다.
   - **0% 목표 비율 지원:** 더 이상 추가 매수하지 않고 보유만 유지할 종목도 포트폴리오에 남겨둘 수 있습니다.
 
 - **📊 시각화 및 직관적인 UI/UX**
@@ -64,6 +65,7 @@
 ### Frontend
 - **HTML5 / CSS3** (CSS Variables, Flex/Grid 기반 반응형 레이아웃)
 - **Vanilla JavaScript (ES2022+)** (프레임워크 없이 가볍고 빠른 동작)
+- **Node.js 내장 test runner** (리밸런싱/동적 목표비중 순수 함수 테스트)
 
 ### Backend & Deployment
 - **Python 3.13** / **FastAPI** / **Jinja2** (정적 파일 및 CORS 프록시)
@@ -92,13 +94,15 @@ make dev
 
 기타 make 명령:
 ```bash
-make test   # 테스트 실행
-make lint   # ruff check + pyright
+make test   # Python API 테스트 + JavaScript 알고리즘 테스트 실행
+make lint   # ruff check + pyright + app.js 구문 검사
 make build  # Docker 이미지 빌드
 make clean  # 컨테이너/이미지 정리
 ```
 
-### uv로 직접 실행 (Docker 없이)
+### uv로 직접 실행 (참고용)
+
+공식 개발·검증 경로는 Docker 기반 `make` 명령입니다. 아래 방식은 빠른 로컬 확인용이며, PR/배포 전에는 반드시 `make test`와 `make lint`를 실행합니다.
 
 ```bash
 git clone <repository-url>
@@ -146,14 +150,15 @@ ETF_Rebalancer/
 │   ├── main.py              # FastAPI 앱
 │   │                        #   GET /api/price/{ticker}?market=KR|US|CRYPTO
 │   │                        #   GET /api/history/{ticker}?market=US&range=1y&interval=1d
-│   │                        #   GET /api/rate/{pair}  (예: USDKRW)
+│   │                        #   GET /api/rate/USDKRW
 │   ├── static/
 │   │   ├── app.js           # 리밸런싱 계산 + UI 로직 (전부 클라이언트 사이드)
 │   │   └── style.css        # UI 스타일링 (Light Theme)
 │   └── templates/
 │       └── index.html       # SPA 진입점
 ├── tests/
-│   └── test_main.py         # pytest 테스트
+│   ├── test_main.py         # pytest API 테스트
+│   └── js/                  # Node.js 기반 프론트엔드 알고리즘 테스트
 ├── .github/
 │   └── workflows/
 │       └── fly-deploy.yml   # GitHub Actions CI/CD
@@ -180,7 +185,7 @@ ETF_Rebalancer/
 3. **동적 목표비중 확인(선택):** [동적 목표비중] 패널에서 계산 방식을 선택하고, ETF 유형별 목표비중 미리보기를 확인합니다.
 4. **목표 비율 적용(선택):** 미리보기 값이 적절할 때만 [목표 비율에 적용]을 눌러 ETF 목록의 목표 비율 입력값에 반영합니다.
 5. **계산하기:** [리밸런싱 계산하기] 버튼(또는 Enter)을 누릅니다.
-6. **결과 확인:** 표와 차트에서 매수 수량·금액 및 최종 비율을 확인합니다.
+6. **결과 확인:** 표와 차트에서 매수 수량·금액 및 남은 예산을 현금으로 포함한 최종 비율을 확인합니다.
 7. **저장:** [내보내기]로 현재 상태를 `.json`으로 저장하고, 다음 달에 [불러오기]로 이어서 사용합니다.
 
 ---

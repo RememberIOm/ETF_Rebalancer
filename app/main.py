@@ -17,6 +17,7 @@ ETF 리밸런싱 계산기 — 메인 애플리케이션 (Stateless Server)
 
 import re
 from datetime import UTC, datetime
+from math import isfinite
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -36,9 +37,9 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 # 시장별 티커 검증 패턴
 _RE_KR = re.compile(r"[A-Za-z0-9]{6}")
-_RE_US = re.compile(r"[A-Za-z0-9.\-=^]{1,10}")
+_RE_US = re.compile(r"(?=.*[A-Za-z0-9])[A-Za-z0-9.\-=^]{1,10}")
 _RE_CRYPTO = re.compile(r"[A-Z]{2,10}")
-_RE_PAIR = re.compile(r"[A-Z0-9=X]{3,10}")
+_RATE_TICKERS = {"USDKRW": "USDKRW=X"}
 
 type Market = Literal["KR", "US", "CRYPTO"]
 type HistoryRange = Literal["5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
@@ -56,18 +57,22 @@ async def _fetch_kr(client: httpx.AsyncClient, ticker: str) -> dict[str, object]
     url = f"https://m.stock.naver.com/api/stock/{ticker}/basic"
     try:
         resp = await client.get(url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다")
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Naver Finance 연결 오류") from exc
 
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="존재하지 않는 종목코드입니다")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Naver Finance API 오류")
 
-    data = resp.json()
     try:
-        price = int(data["closePrice"].replace(",", ""))
-    except (KeyError, ValueError):
+        data = resp.json()
+        price = int(str(data["closePrice"]).replace(",", ""))
+        if price <= 0:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
         raise HTTPException(status_code=502, detail="가격 정보를 파싱할 수 없습니다")
 
     return {"ticker": ticker, "price": price, "currency": "KRW", "market": "KR"}
@@ -78,8 +83,10 @@ async def _fetch_yahoo(client: httpx.AsyncClient, ticker: str) -> float:
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d"
     try:
         resp = await client.get(url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다")
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Yahoo Finance 연결 오류") from exc
 
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="존재하지 않는 티커입니다")
@@ -87,8 +94,10 @@ async def _fetch_yahoo(client: httpx.AsyncClient, ticker: str) -> float:
         raise HTTPException(status_code=502, detail="Yahoo Finance API 오류")
 
     try:
-        price: float = resp.json()["chart"]["result"][0]["meta"]["regularMarketPrice"]
-    except (KeyError, IndexError, TypeError):
+        price = float(resp.json()["chart"]["result"][0]["meta"]["regularMarketPrice"])
+        if not isfinite(price) or price <= 0:
+            raise ValueError
+    except (KeyError, IndexError, TypeError, ValueError):
         raise HTTPException(status_code=502, detail="가격 정보를 파싱할 수 없습니다")
 
     return price
@@ -113,8 +122,10 @@ async def _fetch_yahoo_history(
     )
     try:
         resp = await client.get(url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다")
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Yahoo Finance 연결 오류") from exc
 
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="존재하지 않는 티커입니다")
@@ -125,18 +136,33 @@ async def _fetch_yahoo_history(
         result = resp.json()["chart"]["result"][0]
         currency = result.get("meta", {}).get("currency") or "USD"
         timestamps: list[int] = result["timestamp"]
-        closes: list[float | None] = result["indicators"]["quote"][0]["close"]
-    except (KeyError, IndexError, TypeError):
+        closes: list[object] = result["indicators"]["quote"][0]["close"]
+    except (KeyError, IndexError, TypeError, ValueError):
         raise HTTPException(status_code=502, detail="가격 히스토리를 파싱할 수 없습니다")
 
     points = []
     for timestamp, close in zip(timestamps, closes, strict=False):
         if close is None:
             continue
+        if not isinstance(close, int | float | str):
+            continue
+        if not isinstance(timestamp, int | float | str):
+            continue
+        try:
+            timestamp_value = float(timestamp)
+            close_value = float(close)
+        except (TypeError, ValueError):
+            continue
+        if not isfinite(timestamp_value) or not isfinite(close_value) or close_value <= 0:
+            continue
+        try:
+            date = datetime.fromtimestamp(timestamp_value, UTC).date().isoformat()
+        except (OSError, OverflowError, ValueError):
+            continue
         points.append(
             {
-                "date": datetime.fromtimestamp(timestamp, UTC).date().isoformat(),
-                "close": close,
+                "date": date,
+                "close": close_value,
             }
         )
 
@@ -158,18 +184,21 @@ async def _fetch_crypto(client: httpx.AsyncClient, ticker: str) -> dict[str, obj
     url = f"https://api.upbit.com/v1/ticker?markets=KRW-{ticker}"
     try:
         resp = await client.get(url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다")
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Upbit 연결 오류") from exc
 
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Upbit API 오류")
 
-    data = resp.json()
-    if not data:
-        raise HTTPException(status_code=404, detail="존재하지 않는 암호화폐 티커입니다")
-
     try:
+        data = resp.json()
+        if not data:
+            raise HTTPException(status_code=404, detail="존재하지 않는 암호화폐 티커입니다")
         price = int(data[0]["trade_price"])
+        if price <= 0:
+            raise ValueError
     except (KeyError, IndexError, TypeError, ValueError):
         raise HTTPException(status_code=502, detail="가격 정보를 파싱할 수 없습니다")
 
@@ -238,18 +267,18 @@ async def get_history(
 
 @app.get("/api/rate/{pair}")
 async def get_rate(
-    pair: Annotated[str, FPath(description="환율 쌍 (예: USDKRW)")],
+    pair: Annotated[str, FPath(description="환율 쌍 (현재 USDKRW만 지원)")],
 ) -> dict[str, object]:
     """환율 조회 — Yahoo Finance 프록시
 
-    예: /api/rate/USDKRW → USD/KRW 환율 반환
+    공개 프록시 범위를 줄이기 위해 현재는 /api/rate/USDKRW만 허용합니다.
     """
-    if not _RE_PAIR.fullmatch(pair):
+    yahoo_ticker = _RATE_TICKERS.get(pair)
+    if yahoo_ticker is None:
         raise HTTPException(
-            status_code=400, detail="환율 쌍 형식이 올바르지 않습니다 (예: USDKRW)"
+            status_code=400, detail="지원하는 환율 쌍은 USDKRW뿐입니다"
         )
 
-    yahoo_ticker = f"{pair}=X"
     async with httpx.AsyncClient() as client:
         rate = await _fetch_yahoo(client, yahoo_ticker)
 

@@ -2,9 +2,9 @@
  * ETF 리밸런싱 계산기 — 프론트엔드 로직 (Fully Client-Side)
  *
  * [아키텍처]
- * 모든 계산/데이터 관리가 브라우저에서 수행됩니다.
- * 서버 API 호출 없이 동작하므로, 여러 사용자가 각자의 JSON을
- * 업로드하여 동시에 독립적으로 사용할 수 있습니다.
+ * 모든 계산/데이터 관리는 브라우저에서 수행됩니다.
+ * 현재가/환율/과거 가격 조회만 서버 CORS 프록시 API를 사용하며,
+ * 여러 사용자가 각자의 JSON을 업로드해 독립적으로 사용할 수 있습니다.
  *
  * - 0% 비율 허용 (더 이상 매수하지 않을 ETF)
  * - Export/Import JSON 기능 (클라이언트 전용)
@@ -44,7 +44,7 @@ const MARKET_CONFIG = Object.freeze({
     label: '미국',
     currency: 'USD',
     symbol: '$',
-    tickerPattern: /^[A-Za-z0-9.\-=^]{1,10}$/,
+    tickerPattern: /^(?=.*[A-Za-z0-9])[A-Za-z0-9.\-=^]{1,10}$/,
     tickerPlaceholder: 'AAPL',
     tickerMaxLength: 10,
   },
@@ -94,39 +94,41 @@ const PRESETS = [
 
 // ========== 초기화 ==========
 
-document.addEventListener('DOMContentLoaded', () => {
-  PRESETS.forEach(p => addETFRow(p));
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    PRESETS.forEach(p => addETFRow(p));
 
-  document.getElementById('addBtn').addEventListener('click', () => addETFRow());
-  document.getElementById('calcBtn').addEventListener('click', calculate);
+    document.getElementById('addBtn').addEventListener('click', () => addETFRow());
+    document.getElementById('calcBtn').addEventListener('click', calculate);
 
-  // 예산 입력 — 숫자 포맷팅 (콤마 자동 삽입)
-  const budgetInput = document.getElementById('budget');
-  budgetInput.addEventListener('input', (e) => {
-    const raw = e.target.value.replace(/[^\d]/g, '');
-    e.target.value = raw ? Number(raw).toLocaleString() : '';
+    // 예산 입력 — 숫자 포맷팅 (콤마 자동 삽입)
+    const budgetInput = document.getElementById('budget');
+    budgetInput.addEventListener('input', (e) => {
+      const raw = e.target.value.replace(/[^\d]/g, '');
+      e.target.value = raw ? Number(raw).toLocaleString() : '';
+      scheduleDynamicAllocationUpdate();
+    });
+
+    // Enter 키로 계산 트리거
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        calculate();
+      }
+    });
+
+    // Export / Import 이벤트 바인딩
+    document.getElementById('exportBtn').addEventListener('click', exportData);
+    document.getElementById('importBtn').addEventListener('click', () => {
+      document.getElementById('importFile').click();
+    });
+    document.getElementById('importFile').addEventListener('change', importData);
+
+    initDynamicAllocationPanel();
+    updateRatioBadge();
     scheduleDynamicAllocationUpdate();
   });
-
-  // Enter 키로 계산 트리거
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      calculate();
-    }
-  });
-
-  // Export / Import 이벤트 바인딩
-  document.getElementById('exportBtn').addEventListener('click', exportData);
-  document.getElementById('importBtn').addEventListener('click', () => {
-    document.getElementById('importFile').click();
-  });
-  document.getElementById('importFile').addEventListener('change', importData);
-
-  initDynamicAllocationPanel();
-  updateRatioBadge();
-  scheduleDynamicAllocationUpdate();
-});
+}
 
 
 // ========== ETF 행 관리 ==========
@@ -135,6 +137,44 @@ function assetTypeOptionsHtml(selectedType) {
   return Object.entries(ASSET_TYPES).map(([value, label]) => (
     `<option value="${value}" ${selectedType === value ? 'selected' : ''}>${label}</option>`
   )).join('');
+}
+
+
+function normalizeMarket(value, fallback = 'KR') {
+  return Object.hasOwn(MARKET_CONFIG, value) ? value : fallback;
+}
+
+
+function normalizeAssetType(value, fallback = 'OTHER') {
+  return Object.hasOwn(ASSET_TYPES, value) ? value : fallback;
+}
+
+
+function stringValue(value) {
+  return value === undefined || value === null ? '' : String(value);
+}
+
+
+function sanitizeDecimalString(value) {
+  let raw = stringValue(value).replace(/[^\d.]/g, '');
+  const dotIdx = raw.indexOf('.');
+  if (dotIdx !== -1) {
+    raw = raw.slice(0, dotIdx + 1) + raw.slice(dotIdx + 1).replace(/\./g, '');
+  }
+  return raw;
+}
+
+
+function sanitizeIntegerString(value) {
+  return stringValue(value).replace(/[^\d]/g, '');
+}
+
+
+function normalizeImportedPrice(value, market) {
+  if (market === 'US') return sanitizeDecimalString(value);
+
+  const digits = sanitizeIntegerString(value);
+  return digits ? Number(digits).toLocaleString() : '';
 }
 
 
@@ -192,13 +232,25 @@ function addETFRow(preset = null) {
   el.dataset.id = id;
 
   const isMobile = window.innerWidth <= 768;
-  const market = preset?.market || 'KR';
+  const market = normalizeMarket(preset?.market);
   const cfg = MARKET_CONFIG[market];
-  const initBuyMode = preset?.buy_mode || (market === 'CRYPTO' ? 'amount' : 'qty');
-  const initialAssetType = preset?.asset_type
-    || inferAssetType(preset?.name || '', preset?.ticker || '', market);
+  const initBuyMode = preset?.buy_mode === 'amount'
+    ? 'amount'
+    : (market === 'CRYPTO' ? 'amount' : 'qty');
+  const inferredAssetType = inferAssetType(
+    stringValue(preset?.name),
+    stringValue(preset?.ticker),
+    market
+  );
+  const initialAssetType = normalizeAssetType(preset?.asset_type, inferredAssetType);
   const initialAssetTypeManual = preset?.asset_type_manual ?? Boolean(preset?.asset_type);
-  const initialSleeveWeight = preset?.sleeve_weight ?? '';
+  const initialSleeveWeight = sanitizeDecimalString(preset?.sleeve_weight);
+  const initialName = escapeHtml(stringValue(preset?.name));
+  const initialTicker = escapeHtml(stringValue(preset?.ticker));
+  const initialPrice = escapeHtml(stringValue(preset?.price));
+  const initialQty = escapeHtml(stringValue(preset?.qty));
+  const initialRatio = escapeHtml(stringValue(preset?.ratio));
+  const initialSleeveWeightHtml = escapeHtml(initialSleeveWeight);
 
   el.innerHTML = `
     <div class="input-group">
@@ -212,24 +264,24 @@ function addETFRow(preset = null) {
     <div class="input-group">
       ${isMobile ? '<label>ETF 이름</label>' : ''}
       <input type="text" class="input" data-field="name"
-             placeholder="ETF 이름" value="${preset?.name || ''}" autocomplete="off">
+             placeholder="ETF 이름" value="${initialName}" autocomplete="off">
     </div>
     <div class="input-group">
       ${isMobile ? '<label>종목코드</label>' : ''}
       <input type="text" class="input mono" data-field="ticker"
-             placeholder="${cfg.tickerPlaceholder}" value="${preset?.ticker || ''}"
+             placeholder="${cfg.tickerPlaceholder}" value="${initialTicker}"
              maxlength="${cfg.tickerMaxLength}" inputmode="text" autocomplete="off">
     </div>
     <div class="input-group">
       ${isMobile ? '<label>현재가</label>' : ''}
       <input type="text" class="input mono" data-field="price"
-             placeholder="0" value="${preset?.price || ''}" inputmode="${market === 'US' ? 'decimal' : 'numeric'}" autocomplete="off">
+             placeholder="0" value="${initialPrice}" inputmode="${market === 'US' ? 'decimal' : 'numeric'}" autocomplete="off">
     </div>
     <div class="input-group">
       ${isMobile ? '<label>보유 수량</label>' : ''}
       <div class="qty-with-mode">
         <input type="text" class="input mono" data-field="qty"
-               placeholder="0" value="${preset?.qty || ''}"
+               placeholder="0" value="${initialQty}"
                inputmode="${market === 'KR' && initBuyMode === 'qty' ? 'numeric' : 'decimal'}" autocomplete="off">
         <button class="btn-buy-mode" type="button" data-buy-mode="${initBuyMode}"
                 title="매수 방식 전환 (주=수량 기준 / 원=금액 기준)">${initBuyMode === 'amount' ? '원' : '주'}</button>
@@ -239,12 +291,12 @@ function addETFRow(preset = null) {
       ${isMobile ? '<label>목표 비율(%)</label>' : ''}
       <div class="ratio-with-type">
         <input type="text" class="input mono" data-field="ratio"
-               placeholder="0" value="${preset?.ratio || ''}" inputmode="decimal" autocomplete="off">
+                placeholder="0" value="${initialRatio}" inputmode="decimal" autocomplete="off">
         <select class="input asset-type-select" data-field="asset_type" data-manual="${initialAssetTypeManual}">
           ${assetTypeOptionsHtml(initialAssetType)}
         </select>
         <input type="text" class="input mono sleeve-input" data-field="sleeve_weight"
-               placeholder="하위%" value="${initialSleeveWeight}" inputmode="decimal" autocomplete="off">
+                placeholder="하위%" value="${initialSleeveWeightHtml}" inputmode="decimal" autocomplete="off">
       </div>
     </div>
     <button class="btn btn-delete" type="button" title="삭제">
@@ -266,8 +318,15 @@ function addETFRow(preset = null) {
 
   // USD 가격은 dataset에 원시값 보관 (소수점 있는 형태)
   if (market === 'US' && preset?.price) {
-    priceInput.dataset.usdPrice = preset.price.replace(/[^\d.]/g, '');
+    priceInput.dataset.usdPrice = sanitizeDecimalString(preset.price);
   }
+
+  const requestPriceForCurrentRow = (ticker, requestedMarket) => fetchPrice(
+    ticker,
+    requestedMarket,
+    priceInput,
+    () => marketSelect.value === requestedMarket && tickerInput.value.trim() === ticker
+  );
 
   // 매수 방식 토글 (주=수량 기준, 원=금액 기준)
   buyModeBtn.addEventListener('click', () => {
@@ -309,8 +368,9 @@ function addETFRow(preset = null) {
 
   // 시장 변경 — placeholder/maxlength 갱신 및 티커 재검증 후 재조회
   marketSelect.addEventListener('change', () => {
-    const newMarket = marketSelect.value;
+    const newMarket = normalizeMarket(marketSelect.value);
     const newCfg = MARKET_CONFIG[newMarket];
+    invalidatePriceRequest(priceInput);
     tickerInput.placeholder = newCfg.tickerPlaceholder;
     tickerInput.maxLength = newCfg.tickerMaxLength;
     priceInput.value = '';
@@ -325,7 +385,7 @@ function addETFRow(preset = null) {
 
     const ticker = tickerInput.value.trim();
     if (newCfg.tickerPattern.test(ticker)) {
-      fetchPrice(ticker, newMarket, priceInput);
+      requestPriceForCurrentRow(ticker, newMarket);
     }
     updateInferredAssetType(el);
     scheduleDynamicAllocationUpdate();
@@ -336,10 +396,11 @@ function addETFRow(preset = null) {
   tickerInput.addEventListener('input', (e) => {
     clearTimeout(debounceTimer);
     const currentMarket = marketSelect.value;
+    invalidatePriceRequest(priceInput);
     updateInferredAssetType(el);
     scheduleDynamicAllocationUpdate();
     debounceTimer = setTimeout(
-      () => fetchPrice(e.target.value.trim(), currentMarket, priceInput),
+      () => requestPriceForCurrentRow(e.target.value.trim(), currentMarket),
       600
     );
   });
@@ -407,7 +468,11 @@ async function fetchExchangeRate() {
     throw new Error(err.detail || '환율 조회 실패');
   }
   const data = await res.json();
-  usdKrwRate = data.rate;
+  const rate = Number(data.rate);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error('환율 응답값이 올바르지 않습니다');
+  }
+  usdKrwRate = rate;
   rateFetchedAt = Date.now();
   return usdKrwRate;
 }
@@ -415,9 +480,24 @@ async function fetchExchangeRate() {
 
 // ========== 현재가 자동 조회 ==========
 
-async function fetchPrice(ticker, market, priceInput) {
+function invalidatePriceRequest(priceInput) {
+  const currentSeq = Number(priceInput.dataset.priceRequestSeq || '0');
+  priceInput.dataset.priceRequestSeq = String(currentSeq + 1);
+  priceInput.classList.remove('loading');
+  if (priceInput.placeholder === '조회 중...') priceInput.placeholder = '0';
+}
+
+
+async function fetchPrice(ticker, market, priceInput, isCurrent = null) {
   const cfg = MARKET_CONFIG[market];
   if (!cfg?.tickerPattern.test(ticker)) return;
+
+  const requestSeq = Number(priceInput.dataset.priceRequestSeq || '0') + 1;
+  priceInput.dataset.priceRequestSeq = String(requestSeq);
+  const isLatestRequest = () => (
+    priceInput.dataset.priceRequestSeq === String(requestSeq)
+    && (!isCurrent || isCurrent())
+  );
 
   priceInput.classList.add('loading');
   const prevPlaceholder = priceInput.placeholder;
@@ -429,9 +509,15 @@ async function fetchPrice(ticker, market, priceInput) {
       throw new Error(err.detail || '조회 실패');
     }
     const data = await res.json();
+    if (!isLatestRequest()) return;
+
+    const price = Number(data.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error('현재가 응답값이 올바르지 않습니다');
+    }
 
     if (market === 'US') {
-      const usdPrice = data.price;
+      const usdPrice = price;
       priceInput.dataset.usdPrice = String(usdPrice);
       priceInput.value = usdPrice.toLocaleString('en-US', {
         minimumFractionDigits: 2,
@@ -439,14 +525,17 @@ async function fetchPrice(ticker, market, priceInput) {
       });
     } else {
       priceInput.dataset.usdPrice = '';
-      priceInput.value = Math.round(data.price).toLocaleString();
+      priceInput.value = Math.round(price).toLocaleString();
     }
     scheduleDynamicAllocationUpdate();
   } catch (err) {
+    if (!isLatestRequest()) return;
     showToast(`현재가 조회 실패: ${err.message}`);
   } finally {
-    priceInput.classList.remove('loading');
-    priceInput.placeholder = prevPlaceholder;
+    if (priceInput.dataset.priceRequestSeq === String(requestSeq)) {
+      priceInput.classList.remove('loading');
+      priceInput.placeholder = prevPlaceholder;
+    }
   }
 }
 
@@ -464,7 +553,13 @@ async function refreshAllPrices() {
       const priceInput = row.querySelector('[data-field="price"]');
       if (!ticker || !market || !priceInput) return Promise.resolve();
       if (!MARKET_CONFIG[market]?.tickerPattern.test(ticker)) return Promise.resolve();
-      return fetchPrice(ticker, market, priceInput);
+      return fetchPrice(
+        ticker,
+        market,
+        priceInput,
+        () => row.querySelector('[data-field="market"]')?.value === market
+          && row.querySelector('[data-field="ticker"]')?.value.trim() === ticker
+      );
     })
   );
 
@@ -689,8 +784,9 @@ function restoreDynamicAllocationConfig(config) {
   }
 
   const highWaterMark = document.getElementById('dynamicHighWaterMark');
-  if (highWaterMark && config.high_water_mark) {
-    highWaterMark.value = Number(config.high_water_mark).toLocaleString();
+  if (highWaterMark && Object.hasOwn(config, 'high_water_mark')) {
+    const highWaterMarkValue = sanitizeIntegerString(config.high_water_mark);
+    highWaterMark.value = highWaterMarkValue ? Number(highWaterMarkValue).toLocaleString() : '';
   }
   const autoApply = document.getElementById('dynamicAutoApply');
   if (autoApply) {
@@ -823,7 +919,60 @@ function invalidDynamicResult(config, warnings, metrics = []) {
 }
 
 
+function validateDynamicAllocationConfig(config) {
+  const errors = [];
+  const isPercent = value => Number.isFinite(value) && value >= 0 && value <= 1;
+
+  if (!isPercent(config.minRiskWeight)) {
+    errors.push('위험자산 최소 비중은 0% 이상 100% 이하이어야 합니다.');
+  }
+  if (!isPercent(config.maxRiskWeight)) {
+    errors.push('위험자산 최대 비중은 0% 이상 100% 이하이어야 합니다.');
+  }
+  if (config.minRiskWeight > config.maxRiskWeight) {
+    errors.push('위험자산 최소 비중은 최대 비중보다 작거나 같아야 합니다.');
+  }
+  if (!Number.isFinite(config.lookbackDays) || config.lookbackDays < 1 || config.lookbackDays > 756) {
+    errors.push('계산 기간은 1~756거래일 범위여야 합니다.');
+  }
+
+  if (config.method === 'volatility_targeting' && (!Number.isFinite(config.targetVol) || config.targetVol <= 0)) {
+    errors.push('목표 변동성은 0%보다 커야 합니다.');
+  }
+  if (config.method === 'mean_variance_merton' && (!Number.isFinite(config.riskAversion) || config.riskAversion <= 0)) {
+    errors.push('위험회피도 gamma는 0보다 커야 합니다.');
+  }
+  if (config.method === 'var_es_risk_budget') {
+    if (![0.95, 0.99].some(value => Math.abs(value - config.confidenceLevel) < 1e-9)) {
+      errors.push('VaR/ES 신뢰수준은 95% 또는 99%만 지원합니다.');
+    }
+    if (!Number.isFinite(config.riskHorizonDays) || config.riskHorizonDays < 1 || config.riskHorizonDays > 252) {
+      errors.push('위험기간은 1~252거래일 범위여야 합니다.');
+    }
+    if (!Number.isFinite(config.riskBudget) || config.riskBudget <= 0 || config.riskBudget > 1) {
+      errors.push('손실 예산은 0% 초과 100% 이하이어야 합니다.');
+    }
+  }
+  if (config.method === 'cppi_floor') {
+    if (!isPercent(config.floorRatio)) {
+      errors.push('CPPI 보전 비율은 0% 이상 100% 이하이어야 합니다.');
+    }
+    if (!isPercent(config.maxDrawdown)) {
+      errors.push('CPPI 최대 손실한도는 0% 이상 100% 이하이어야 합니다.');
+    }
+    if (!Number.isFinite(config.multiplier) || config.multiplier < 0 || config.multiplier > 10) {
+      errors.push('CPPI 승수는 0 이상 10 이하이어야 합니다.');
+    }
+  }
+
+  return errors;
+}
+
+
 function validDynamicResult(config, riskWeight, metrics, warnings = []) {
+  if (!Number.isFinite(riskWeight)) {
+    return invalidDynamicResult(config, ['계산된 위험자산 비중이 유효하지 않습니다.'], metrics);
+  }
   const clampedRiskWeight = clamp(riskWeight, config.minRiskWeight, config.maxRiskWeight);
   return {
     method_id: config.method,
@@ -900,10 +1049,11 @@ function calculateTailRiskBudgetAllocation(config, closes) {
     }
 
     const cutoff = quantile(periodReturns, 1 - config.confidenceLevel);
-    const historicalVar = Math.abs(cutoff);
+    const historicalVar = Math.max(-cutoff, 0);
     const tailReturns = periodReturns.filter(value => value <= cutoff);
-    const historicalEs = Math.abs(
-      tailReturns.reduce((sum, value) => sum + value, 0) / Math.max(tailReturns.length, 1)
+    const historicalEs = (
+      tailReturns.reduce((sum, value) => sum + Math.max(-value, 0), 0)
+      / Math.max(tailReturns.length, 1)
     );
 
     tailRisk = config.riskMetric === 'historical_es'
@@ -1006,7 +1156,9 @@ async function calculateCppiAllocation(config) {
   const riskyExposure = config.multiplier * cushion;
   const rawRiskWeight = riskyExposure / snapshot.portfolioValue;
 
-  return validDynamicResult(config, rawRiskWeight, [
+  // CPPI floor protection must not be forced above the formula's risky exposure.
+  const cppiConfig = { ...config, minRiskWeight: 0 };
+  return validDynamicResult(cppiConfig, rawRiskWeight, [
     { label: '현재 총 보유액', value: `₩${fmt(snapshot.totalHeld)}` },
     { label: '이번 달 예산', value: `₩${fmt(snapshot.budget)}` },
     { label: '포트폴리오 기준 금액', value: `₩${fmt(snapshot.portfolioValue)}` },
@@ -1021,9 +1173,8 @@ async function calculateCppiAllocation(config) {
 
 
 async function calculateDynamicAllocation(config, forceHistory = false) {
-  if (config.minRiskWeight > config.maxRiskWeight) {
-    return invalidDynamicResult(config, ['위험자산 최소 비중은 최대 비중보다 작거나 같아야 합니다.']);
-  }
+  const configErrors = validateDynamicAllocationConfig(config);
+  if (configErrors.length > 0) return invalidDynamicResult(config, configErrors);
 
   if (config.method === 'cppi_floor') {
     return calculateCppiAllocation(config);
@@ -1349,6 +1500,38 @@ function exportData() {
  * JSON 파일에서 데이터 불러오기 — v1/v2/v3 형식 지원
  * 브라우저 메모리에만 로드되므로 다른 사용자에게 전혀 영향 없음
  */
+function normalizeImportedHolding(holding, isV1, index) {
+  if (!holding || typeof holding !== 'object' || Array.isArray(holding)) {
+    throw new Error(`${index + 1}번째 보유 항목 형식이 올바르지 않습니다.`);
+  }
+
+  const market = isV1 ? 'KR' : normalizeMarket(holding.market, null);
+  if (!market) {
+    throw new Error(`${index + 1}번째 보유 항목의 시장 값이 올바르지 않습니다.`);
+  }
+
+  const buyMode = holding.buy_mode === 'amount'
+    ? 'amount'
+    : (market === 'CRYPTO' ? 'amount' : 'qty');
+  const ratio = sanitizeDecimalString(holding.ratio);
+
+  return {
+    name: stringValue(holding.name).trim(),
+    ticker: stringValue(holding.ticker).trim(),
+    market,
+    price: normalizeImportedPrice(holding.price, market),
+    qty: buyMode === 'qty' && market === 'KR'
+      ? sanitizeIntegerString(holding.qty)
+      : sanitizeDecimalString(holding.qty),
+    ratio: ratio || '0',
+    buy_mode: buyMode,
+    asset_type: normalizeAssetType(holding.asset_type, null),
+    asset_type_manual: holding.asset_type_manual === true,
+    sleeve_weight: sanitizeDecimalString(holding.sleeve_weight),
+  };
+}
+
+
 function importData(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -1358,17 +1541,21 @@ function importData(e) {
     try {
       const data = JSON.parse(evt.target.result);
 
-      if (!data.holdings || !Array.isArray(data.holdings)) {
+      if (!data || typeof data !== 'object' || !Array.isArray(data.holdings)) {
         showError('올바르지 않은 파일 형식입니다.');
         return;
       }
 
       const isV1 = !data.version || data.version === 1;
+      const importedHoldings = data.holdings.map((holding, index) => (
+        normalizeImportedHolding(holding, isV1, index)
+      ));
 
       // 예산 복원
-      if (data.budget) {
+      if (Object.hasOwn(data, 'budget')) {
         const budgetInput = document.getElementById('budget');
-        budgetInput.value = Number(data.budget) ? Number(data.budget).toLocaleString() : '';
+        const budget = sanitizeIntegerString(data.budget);
+        budgetInput.value = budget ? Number(budget).toLocaleString() : '';
       }
 
       // 기존 ETF 행 제거 후 새로 로드
@@ -1376,27 +1563,18 @@ function importData(e) {
       etfRows = [];
       nextId = 0;
 
-      for (const h of data.holdings) {
-        const market = isV1 ? 'KR' : (h.market || 'KR');
-
-        let formattedPrice;
-        if (market === 'US') {
-          formattedPrice = h.price || '';
-        } else {
-          formattedPrice = h.price ? Number(h.price).toLocaleString() : '';
-        }
-
+      for (const h of importedHoldings) {
         addETFRow({
-          name:     h.name     || '',
-          ticker:   h.ticker   || '',
-          market,
-          price:    formattedPrice,
-          qty:      h.qty      || '',
-          ratio:    h.ratio    || '0',
-          buy_mode: h.buy_mode || (market === 'CRYPTO' ? 'amount' : 'qty'),
-          asset_type: h.asset_type || null,
-          asset_type_manual: h.asset_type_manual || false,
-          sleeve_weight: h.sleeve_weight || '',
+          name:     h.name,
+          ticker:   h.ticker,
+          market:   h.market,
+          price:    h.price,
+          qty:      h.qty,
+          ratio:    h.ratio,
+          buy_mode: h.buy_mode,
+          asset_type: h.asset_type,
+          asset_type_manual: h.asset_type_manual,
+          sleeve_weight: h.sleeve_weight,
         });
       }
 
@@ -1410,7 +1588,7 @@ function importData(e) {
       showToast(msg);
 
     } catch (err) {
-      showError('파일을 읽는 중 오류가 발생했습니다.');
+      showError(err.message || '파일을 읽는 중 오류가 발생했습니다.');
       console.error(err);
     }
   };
@@ -1488,7 +1666,8 @@ function calculateRebalance(holdings, budget) {
       buy_amount: buyAmount,
       final_quantity: heldShares + buyQty,
       final_value: (heldShares + buyQty) * h.current_price,
-      final_ratio: 0, // 아래에서 계산
+      final_ratio: 0, // 남은 예산을 현금으로 포함한 총자산 기준
+      final_ratio_invested_only: 0,
     };
   });
 
@@ -1509,17 +1688,24 @@ function calculateRebalance(holdings, budget) {
     }
   }
 
-  // 최종 비율 계산
-  const totalFinal = results.reduce((sum, r) => sum + r.final_value, 0);
+  // 최종 비율 계산: 목표 비교용은 남은 예산을 현금으로 포함한 총자산 기준입니다.
+  const totalFinalInvested = results.reduce((sum, r) => sum + r.final_value, 0);
+  const totalFinalIncludingCash = totalHeld + budget;
   for (const r of results) {
-    r.final_ratio = totalFinal > 0 ? (r.final_value / totalFinal * 100) : 0;
+    r.final_ratio = totalFinalIncludingCash > 0
+      ? (r.final_value / totalFinalIncludingCash * 100)
+      : 0;
+    r.final_ratio_invested_only = totalFinalInvested > 0
+      ? (r.final_value / totalFinalInvested * 100)
+      : 0;
   }
 
   return {
     results,
     total_held_value: totalHeld,
     total_buy_amount: totalBuy,
-    total_final_value: totalFinal,
+    total_final_value: totalFinalInvested,
+    total_final_with_cash: totalFinalIncludingCash,
     budget_remaining: budget - totalBuy,
   };
 }
@@ -1695,7 +1881,7 @@ function renderResult(data, usdKrwRate = null) {
   // 요약 카드
   document.getElementById('sumHeld').textContent = `₩${fmt(data.total_held_value)}`;
   document.getElementById('sumBuy').textContent = `₩${fmt(data.total_buy_amount)}`;
-  document.getElementById('sumFinal').textContent = `₩${fmt(data.total_final_value)}`;
+  document.getElementById('sumFinal').textContent = `₩${fmt(data.total_final_with_cash)}`;
   document.getElementById('sumRemain').textContent = `₩${fmt(data.budget_remaining)}`;
 
   // 상세 테이블
@@ -1716,16 +1902,17 @@ function renderResult(data, usdKrwRate = null) {
     const heldQtyStr = formatQtyDisplay(r.held_quantity, r.buy_mode, r.market);
     const buyQtyStr = formatQtyDisplay(r.buy_quantity, r.buy_mode, r.market);
     const finalQtyStr = formatQtyDisplay(r.final_quantity, r.buy_mode, r.market);
+    const finalRatioTitle = `투자자산 기준 ${r.final_ratio_invested_only.toFixed(1)}%`;
 
     tr.innerHTML = `
-      <td>${r.name}${isZero ? ' <small style="color:var(--text-muted)">(매수 중단)</small>' : ''}</td>
+      <td>${escapeHtml(r.name)}${isZero ? ' <small style="color:var(--text-muted)">(매수 중단)</small>' : ''}</td>
       <td>${priceDisplay}</td>
       <td>${heldQtyStr}</td>
       <td>${r.current_ratio.toFixed(1)}%</td>
       <td class="highlight-cell">${r.buy_quantity > 0 ? '+' + buyQtyStr : '0'}</td>
       <td class="highlight-cell">${r.buy_amount > 0 ? '₩' + fmt(r.buy_amount) : '-'}</td>
       <td>${finalQtyStr}</td>
-      <td>${r.final_ratio.toFixed(1)}%</td>
+      <td title="${finalRatioTitle}">${r.final_ratio.toFixed(1)}%</td>
       <td class="${isZero ? 'zero-ratio' : ''}">${r.target_ratio.toFixed(1)}%</td>
     `;
     tbody.appendChild(tr);
@@ -1740,7 +1927,10 @@ function renderResult(data, usdKrwRate = null) {
     document.getElementById('resultTable').after(rateNote);
   }
   if (hasUSResult && usdKrwRate) {
-    rateNote.textContent = `* 미국 주식 가격은 1 USD = ₩${Math.round(usdKrwRate).toLocaleString()} 기준으로 환산되었습니다.`;
+    rateNote.textContent = `* 미국 주식 가격은 1 USD = ₩${Math.round(usdKrwRate).toLocaleString()} 기준으로 환산되었습니다. 최종 비율은 남은 예산을 현금으로 포함한 총자산 기준입니다.`;
+    rateNote.style.display = 'block';
+  } else if (data.budget_remaining > 0) {
+    rateNote.textContent = '* 최종 비율은 남은 예산을 현금으로 포함한 총자산 기준입니다.';
     rateNote.style.display = 'block';
   } else {
     rateNote.style.display = 'none';
@@ -1768,7 +1958,7 @@ function renderChart(results) {
     const actualW = (r.final_ratio / maxRatio * 100).toFixed(1);
 
     row.innerHTML = `
-      <span class="chart-label">${r.name}</span>
+      <span class="chart-label">${escapeHtml(r.name)}</span>
       <div class="chart-bars">
         <div class="chart-bar target" style="width: 0%;" data-width="${targetW}%"></div>
         <div class="chart-bar actual" style="width: 0%;" data-width="${actualW}%"></div>
@@ -1796,4 +1986,15 @@ function renderChart(results) {
       });
     }, 50);
   });
+}
+
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    calculateRebalance,
+    calculateCppiAllocation,
+    calculateTailRiskBudgetAllocation,
+    normalizeImportedHolding,
+    validateDynamicAllocationConfig,
+  };
 }
