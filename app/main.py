@@ -16,6 +16,7 @@ ETF 리밸런싱 계산기 — 메인 애플리케이션 (Stateless Server)
 """
 
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -40,6 +41,8 @@ _RE_CRYPTO = re.compile(r"[A-Z]{2,10}")
 _RE_PAIR = re.compile(r"[A-Z0-9=X]{3,10}")
 
 type Market = Literal["KR", "US", "CRYPTO"]
+type HistoryRange = Literal["5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
+type HistoryInterval = Literal["1d", "1wk", "1mo"]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -95,6 +98,59 @@ async def _fetch_us(client: httpx.AsyncClient, ticker: str) -> dict[str, object]
     """Yahoo Finance에서 미국 주식/ETF/선물 현재가 조회 (USD)"""
     price = await _fetch_yahoo(client, ticker)
     return {"ticker": ticker, "price": price, "currency": "USD", "market": "US"}
+
+
+async def _fetch_yahoo_history(
+    client: httpx.AsyncClient,
+    ticker: str,
+    range_: HistoryRange,
+    interval: HistoryInterval,
+) -> dict[str, object]:
+    """Yahoo Finance chart API에서 일봉/주봉/월봉 종가 히스토리 조회."""
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+        f"?interval={interval}&range={range_}"
+    )
+    try:
+        resp = await client.get(url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="조회 시간이 초과되었습니다")
+
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="존재하지 않는 티커입니다")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Yahoo Finance API 오류")
+
+    try:
+        result = resp.json()["chart"]["result"][0]
+        currency = result.get("meta", {}).get("currency") or "USD"
+        timestamps: list[int] = result["timestamp"]
+        closes: list[float | None] = result["indicators"]["quote"][0]["close"]
+    except (KeyError, IndexError, TypeError):
+        raise HTTPException(status_code=502, detail="가격 히스토리를 파싱할 수 없습니다")
+
+    points = []
+    for timestamp, close in zip(timestamps, closes, strict=False):
+        if close is None:
+            continue
+        points.append(
+            {
+                "date": datetime.fromtimestamp(timestamp, UTC).date().isoformat(),
+                "close": close,
+            }
+        )
+
+    if not points:
+        raise HTTPException(status_code=404, detail="가격 히스토리가 없습니다")
+
+    return {
+        "ticker": ticker,
+        "market": "US",
+        "currency": currency,
+        "range": range_,
+        "interval": interval,
+        "points": points,
+    }
 
 
 async def _fetch_crypto(client: httpx.AsyncClient, ticker: str) -> dict[str, object]:
@@ -158,6 +214,26 @@ async def get_price(
                 return await _fetch_us(client, ticker)
             case "CRYPTO":
                 return await _fetch_crypto(client, ticker)
+
+
+@app.get("/api/history/{ticker}")
+async def get_history(
+    ticker: Annotated[str, FPath(description="Yahoo Finance 지원 티커")],
+    market: Annotated[Market, Query(description="시장 구분")] = "US",
+    range: Annotated[HistoryRange, Query(description="조회 기간")] = "1y",
+    interval: Annotated[HistoryInterval, Query(description="가격 간격")] = "1d",
+) -> dict[str, object]:
+    """과거 가격 조회 — 동적 목표비중 계산용 Yahoo Finance 프록시."""
+    if market != "US":
+        raise HTTPException(status_code=400, detail="히스토리는 현재 US 시장만 지원합니다")
+    if not _RE_US.fullmatch(ticker):
+        raise HTTPException(
+            status_code=400,
+            detail="US 티커는 1~10자 영문자/숫자/특수문자(. - = ^)여야 합니다",
+        )
+
+    async with httpx.AsyncClient() as client:
+        return await _fetch_yahoo_history(client, ticker, range, interval)
 
 
 @app.get("/api/rate/{pair}")

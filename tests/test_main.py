@@ -14,6 +14,24 @@ YAHOO_RATE_RESPONSE = {
     "chart": {"result": [{"meta": {"regularMarketPrice": 1380.5}}], "error": None}
 }
 YAHOO_BAD_RESPONSE = {"chart": {"result": None, "error": "Not found"}}
+YAHOO_HISTORY_RESPONSE = {
+    "chart": {
+        "result": [
+            {
+                "meta": {"currency": "USD", "symbol": "VT"},
+                "timestamp": [1767312000, 1767571200, 1767657600],
+                "indicators": {
+                    "quote": [
+                        {
+                            "close": [120.5, None, 121.25],
+                        }
+                    ]
+                },
+            }
+        ],
+        "error": None,
+    }
+}
 
 
 def test_health():
@@ -139,6 +157,100 @@ def test_price_us_yahoo_parse_error(httpx_mock: HTTPXMock):
     )
     resp = client.get("/api/price/AAPL?market=US")
     assert resp.status_code == 502
+
+
+# ── US 히스토리 엔드포인트 ────────────────────────────────────────────────────
+
+
+def test_history_us_valid(httpx_mock: HTTPXMock):
+    """US 히스토리 조회 → Yahoo chart 응답을 종가 포인트로 반환"""
+    httpx_mock.add_response(
+        url="https://query1.finance.yahoo.com/v8/finance/chart/VT?interval=1d&range=1y",
+        json=YAHOO_HISTORY_RESPONSE,
+    )
+    resp = client.get("/api/history/VT?market=US")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ticker"] == "VT"
+    assert data["market"] == "US"
+    assert data["currency"] == "USD"
+    assert data["range"] == "1y"
+    assert data["interval"] == "1d"
+    assert data["points"] == [
+        {"date": "2026-01-02", "close": 120.5},
+        {"date": "2026-01-06", "close": 121.25},
+    ]
+
+
+def test_history_us_custom_range_interval(httpx_mock: HTTPXMock):
+    """range/interval 지정 → Yahoo URL에 반영"""
+    httpx_mock.add_response(
+        url="https://query1.finance.yahoo.com/v8/finance/chart/VT?interval=1wk&range=6mo",
+        json=YAHOO_HISTORY_RESPONSE,
+    )
+    resp = client.get("/api/history/VT?market=US&range=6mo&interval=1wk")
+    assert resp.status_code == 200
+    assert resp.json()["range"] == "6mo"
+    assert resp.json()["interval"] == "1wk"
+
+
+def test_history_us_invalid_ticker():
+    """US 티커 11자 초과 → 400"""
+    resp = client.get("/api/history/TOOLONGTICKER?market=US")
+    assert resp.status_code == 400
+
+
+def test_history_unsupported_market():
+    """히스토리는 MVP에서 US 시장만 지원"""
+    resp = client.get("/api/history/069500?market=KR")
+    assert resp.status_code == 400
+
+
+def test_history_invalid_range():
+    """허용되지 않은 조회 기간 → 422"""
+    resp = client.get("/api/history/VT?market=US&range=bad")
+    assert resp.status_code == 422
+
+
+def test_history_yahoo_not_found(httpx_mock: HTTPXMock):
+    """Yahoo Finance 404 → 404 반환"""
+    httpx_mock.add_response(
+        url="https://query1.finance.yahoo.com/v8/finance/chart/INVALID?interval=1d&range=1y",
+        status_code=404,
+    )
+    resp = client.get("/api/history/INVALID?market=US")
+    assert resp.status_code == 404
+
+
+def test_history_yahoo_parse_error(httpx_mock: HTTPXMock):
+    """Yahoo chart 응답 구조 오류 → 502"""
+    httpx_mock.add_response(
+        url="https://query1.finance.yahoo.com/v8/finance/chart/VT?interval=1d&range=1y",
+        json=YAHOO_BAD_RESPONSE,
+    )
+    resp = client.get("/api/history/VT?market=US")
+    assert resp.status_code == 502
+
+
+def test_history_empty_prices(httpx_mock: HTTPXMock):
+    """유효 종가가 없으면 404"""
+    httpx_mock.add_response(
+        url="https://query1.finance.yahoo.com/v8/finance/chart/VT?interval=1d&range=1y",
+        json={
+            "chart": {
+                "result": [
+                    {
+                        "meta": {"currency": "USD"},
+                        "timestamp": [1767312000],
+                        "indicators": {"quote": [{"close": [None]}]},
+                    }
+                ],
+                "error": None,
+            }
+        },
+    )
+    resp = client.get("/api/history/VT?market=US")
+    assert resp.status_code == 404
 
 
 # ── CRYPTO 시장 ────────────────────────────────────────────────────────────────

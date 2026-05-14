@@ -61,6 +61,172 @@
         </div>
       </section>
 
+      <!-- 동적 목표비중 -->
+      <section class="card dynamic-card" id="dynamicAllocationCard">
+        <div class="card-header dynamic-card-header">
+          <div>
+            <h2>동적 목표비중</h2>
+            <p class="card-description">
+              과거 가격과 입력 조건으로 위험자산/현금성 자산의 이론적 배분 참고값을 계산합니다.
+              투자 조언이나 수익 보장이 아닙니다.
+            </p>
+          </div>
+          <span class="dynamic-status" id="dynamicStatus">대기</span>
+        </div>
+
+        <details class="dynamic-details" open>
+          <summary>계산 조건과 목표비중 미리보기</summary>
+
+          <div class="dynamic-grid">
+            <label class="field-label">
+              방법 선택
+              <select class="input" id="dynamicMethod">
+                <option value="volatility_targeting">변동성 목표화</option>
+                <option value="mean_variance_merton">평균-분산·머튼</option>
+                <option value="var_es_risk_budget">VaR·ES 위험예산</option>
+                <option value="cppi_floor">CPPI·손실한도</option>
+              </select>
+            </label>
+            <label class="field-label history-only">
+              신호 티커
+              <input type="text" class="input mono" id="dynamicSignalTicker" value="VT" maxlength="10" autocomplete="off">
+            </label>
+            <label class="field-label history-only">
+              조회 기간
+              <select class="input" id="dynamicHistoryRange">
+                <option value="6mo">6개월</option>
+                <option value="1y" selected>1년</option>
+                <option value="2y">2년</option>
+                <option value="5y">5년</option>
+              </select>
+            </label>
+            <label class="field-label history-only">
+              계산 기간(거래일)
+              <input type="number" class="input mono" id="dynamicLookbackDays" min="20" max="756" value="60">
+            </label>
+            <label class="field-label">
+              위험자산 최소 비중(%)
+              <input type="number" class="input mono" id="dynamicMinRiskWeight" min="0" max="100" step="1" value="20">
+            </label>
+            <label class="field-label">
+              위험자산 최대 비중(%)
+              <input type="number" class="input mono" id="dynamicMaxRiskWeight" min="0" max="100" step="1" value="100">
+            </label>
+          </div>
+
+          <div class="dynamic-method-fields" data-method-fields="volatility_targeting">
+            <label class="field-label">
+              목표 변동성(연율 %)
+              <input type="number" class="input mono" id="dynamicTargetVol" min="1" max="80" step="0.1" value="10">
+            </label>
+          </div>
+
+          <div class="dynamic-method-fields" data-method-fields="mean_variance_merton" hidden>
+            <label class="field-label">
+              예상 위험자산 수익률(연율 %)
+              <input type="number" class="input mono" id="dynamicExpectedReturn" step="0.1" value="7">
+            </label>
+            <label class="field-label">
+              현금성 자산 수익률(연율 %)
+              <input type="number" class="input mono" id="dynamicCashReturn" step="0.1" value="3">
+            </label>
+            <label class="field-label">
+              위험회피도 gamma
+              <input type="number" class="input mono" id="dynamicRiskAversion" min="0.1" step="0.1" value="4">
+            </label>
+          </div>
+
+          <div class="dynamic-method-fields" data-method-fields="var_es_risk_budget" hidden>
+            <label class="field-label">
+              위험지표
+              <select class="input" id="dynamicRiskMetric">
+                <option value="historical_var">Historical VaR</option>
+                <option value="historical_es">Historical ES</option>
+                <option value="normal_var">Normal VaR</option>
+              </select>
+            </label>
+            <label class="field-label">
+              신뢰수준
+              <select class="input" id="dynamicConfidenceLevel">
+                <option value="0.95">95%</option>
+                <option value="0.99">99%</option>
+              </select>
+            </label>
+            <label class="field-label">
+              위험기간(거래일)
+              <input type="number" class="input mono" id="dynamicRiskHorizonDays" min="1" max="252" value="21">
+            </label>
+            <label class="field-label">
+              손실 예산(%)
+              <input type="number" class="input mono" id="dynamicRiskBudget" min="0.1" max="80" step="0.1" value="5">
+            </label>
+          </div>
+
+          <div class="dynamic-method-fields" data-method-fields="cppi_floor" hidden>
+            <label class="field-label">
+              바닥가치 방식
+              <select class="input" id="dynamicFloorMode">
+                <option value="current">현재 자산 기준</option>
+                <option value="high_water_mark">고점 기준</option>
+              </select>
+            </label>
+            <label class="field-label" data-floor-field="current">
+              보전 비율(%)
+              <input type="number" class="input mono" id="dynamicFloorRatio" min="0" max="100" step="1" value="80">
+            </label>
+            <label class="field-label" data-floor-field="high_water_mark" hidden>
+              최대 손실한도(%)
+              <input type="number" class="input mono" id="dynamicMaxDrawdown" min="0" max="100" step="1" value="20">
+            </label>
+            <label class="field-label" data-floor-field="high_water_mark" hidden>
+              고점 기준 자산가치(원)
+              <input type="text" class="input mono" id="dynamicHighWaterMark" inputmode="numeric" autocomplete="off">
+            </label>
+            <label class="field-label">
+              승수 multiplier
+              <input type="number" class="input mono" id="dynamicMultiplier" min="0" max="10" step="0.1" value="3">
+            </label>
+          </div>
+
+          <div class="dynamic-result">
+            <div class="dynamic-result-main">
+              <div class="dynamic-weight-card">
+                <span>계산된 위험자산 비중</span>
+                <strong id="dynamicRiskWeight">-</strong>
+              </div>
+              <div class="dynamic-weight-card cash">
+                <span>계산된 현금성 비중</span>
+                <strong id="dynamicCashWeight">-</strong>
+              </div>
+            </div>
+            <div class="dynamic-metrics" id="dynamicMetrics"></div>
+            <div class="dynamic-warnings" id="dynamicWarnings"></div>
+          </div>
+
+          <div class="dynamic-preview-wrap">
+            <div class="dynamic-preview-header">
+              <h3>ETF 유형별 목표비중 미리보기</h3>
+              <span id="dynamicPreviewTotal">배정 합계 0%</span>
+            </div>
+            <div class="dynamic-preview" id="dynamicPreviewBody"></div>
+          </div>
+
+          <div class="dynamic-actions">
+            <label class="auto-apply-toggle">
+              <input type="checkbox" id="dynamicAutoApply">
+              자동 적용
+            </label>
+            <button class="btn-icon" id="dynamicRefreshHistory" type="button">과거 가격 다시 조회</button>
+            <button class="btn btn-apply-target" id="dynamicApplyTarget" type="button" disabled>목표 비율에 적용</button>
+          </div>
+
+          <p class="dynamic-disclaimer">
+            주의: 이 계산값은 입력 조건과 과거 가격 데이터로 산출한 참고값입니다.
+            투자 자문, 매수·매도 권유, 특정 자산 추천, 수익 보장을 의미하지 않습니다.
+          </p>
+        </details>
+      </section>
+
       <!-- ETF 목록 -->
       <section class="card">
         <div class="card-header">
