@@ -5,6 +5,7 @@ const {
   calculateRebalance,
   calculateCppiAllocation,
   calculateTailRiskBudgetAllocation,
+  importData,
   normalizeImportedHolding,
   validateDynamicAllocationConfig,
 } = require('../../app/static/app.js');
@@ -92,7 +93,7 @@ test('dynamic config rejects out-of-range imported weights', () => {
 
 test('normalizeImportedHolding rejects unsupported market', () => {
   assert.throws(
-    () => normalizeImportedHolding({ market: 'JP' }, false, 0),
+    () => normalizeImportedHolding({ market: 'JP', asset_type: 'OTHER' }, 0),
     /시장 값이 올바르지 않습니다/
   );
 });
@@ -106,10 +107,53 @@ test('normalizeImportedHolding accepts numeric US fields safely', () => {
     qty: 1.25,
     ratio: 50,
     buy_mode: 'qty',
-  }, false, 0);
+    asset_type: 'OTHER',
+  }, 0);
 
   assert.equal(holding.price, '123.45');
   assert.equal(holding.qty, '1.25');
   assert.equal(holding.ratio, '50');
   assert.equal(holding.market, 'US');
+});
+
+test('normalizeImportedHolding rejects holding without asset type', () => {
+  assert.throws(
+    () => normalizeImportedHolding({ market: 'KR', ratio: 100 }, 0),
+    /자산 유형 값이 올바르지 않습니다/
+  );
+});
+
+test('importData rejects older-format files without touching current rows', () => {
+  const previousDocument = global.document;
+  const previousFileReader = global.FileReader;
+  const elements = {
+    errorBox: { style: {}, scrollIntoView: () => {} },
+    errorMsg: { textContent: '' },
+    etfList: { innerHTML: 'existing rows' },
+    budget: { value: '1,000' },
+  };
+  global.document = { getElementById: id => elements[id] };
+
+  try {
+    for (const data of [
+      { holdings: [{ name: 'KODEX 200', price: '30000', qty: '1', ratio: '100' }] },
+      { version: 2, budget: '5000', holdings: [{ name: 'KODEX 200', market: 'KR', ratio: '100' }] },
+    ]) {
+      elements.errorMsg.textContent = '';
+      global.FileReader = class {
+        readAsText() { this.onload({ target: { result: JSON.stringify(data) } }); }
+      };
+
+      importData({ target: { files: [{}], value: 'old.json' } });
+
+      assert.match(elements.errorMsg.textContent, /지원하지 않는 파일 버전입니다/);
+      assert.equal(elements.etfList.innerHTML, 'existing rows');
+      assert.equal(elements.budget.value, '1,000');
+    }
+  } finally {
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+    if (previousFileReader === undefined) delete global.FileReader;
+    else global.FileReader = previousFileReader;
+  }
 });

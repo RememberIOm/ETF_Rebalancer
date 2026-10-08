@@ -30,6 +30,9 @@ let lastDynamicAllocation = null;
 
 const CACHE_TTL_MS = 600_000;
 
+// Export/Import JSON 형식 버전 (이 버전만 불러올 수 있음)
+const DATA_FORMAT_VERSION = 3;
+
 // 시장별 설정
 const MARKET_CONFIG = Object.freeze({
   KR: {
@@ -754,7 +757,6 @@ function readDynamicAllocationConfig() {
 
 
 function restoreDynamicAllocationConfig(config) {
-  if (!config) return;
   const valueMap = {
     dynamicMethod: config.method,
     dynamicSignalTicker: config.signal_ticker,
@@ -1431,7 +1433,7 @@ function applyDynamicAllocation({ silent = false, skipConfirm = false } = {}) {
 // ========== Export / Import (클라이언트 전용) ==========
 
 /**
- * 현재 입력 상태를 JSON 파일로 내보내기 (v3 형식)
+ * 현재 입력 상태를 JSON 파일로 내보내기 (DATA_FORMAT_VERSION 형식)
  * 서버를 거치지 않으므로 다른 사용자에게 영향 없음
  */
 function exportData() {
@@ -1474,7 +1476,7 @@ function exportData() {
   }
 
   const data = {
-    version: 3,
+    version: DATA_FORMAT_VERSION,
     exported_at: new Date().toISOString(),
     budget,
     dynamic_allocation: exportDynamicAllocationConfig(),
@@ -1497,17 +1499,22 @@ function exportData() {
 
 
 /**
- * JSON 파일에서 데이터 불러오기 — v1/v2/v3 형식 지원
+ * JSON 파일에서 데이터 불러오기 — DATA_FORMAT_VERSION 형식만 지원
  * 브라우저 메모리에만 로드되므로 다른 사용자에게 전혀 영향 없음
  */
-function normalizeImportedHolding(holding, isV1, index) {
+function normalizeImportedHolding(holding, index) {
   if (!holding || typeof holding !== 'object' || Array.isArray(holding)) {
     throw new Error(`${index + 1}번째 보유 항목 형식이 올바르지 않습니다.`);
   }
 
-  const market = isV1 ? 'KR' : normalizeMarket(holding.market, null);
+  const market = normalizeMarket(holding.market, null);
   if (!market) {
     throw new Error(`${index + 1}번째 보유 항목의 시장 값이 올바르지 않습니다.`);
+  }
+
+  const assetType = normalizeAssetType(holding.asset_type, null);
+  if (!assetType) {
+    throw new Error(`${index + 1}번째 보유 항목의 자산 유형 값이 올바르지 않습니다.`);
   }
 
   const buyMode = holding.buy_mode === 'amount'
@@ -1525,7 +1532,7 @@ function normalizeImportedHolding(holding, isV1, index) {
       : sanitizeDecimalString(holding.qty),
     ratio: ratio || '0',
     buy_mode: buyMode,
-    asset_type: normalizeAssetType(holding.asset_type, null),
+    asset_type: assetType,
     asset_type_manual: holding.asset_type_manual === true,
     sleeve_weight: sanitizeDecimalString(holding.sleeve_weight),
   };
@@ -1546,9 +1553,18 @@ function importData(e) {
         return;
       }
 
-      const isV1 = !data.version || data.version === 1;
+      if (data.version !== DATA_FORMAT_VERSION) {
+        showError(`지원하지 않는 파일 버전입니다. v${DATA_FORMAT_VERSION} 형식 파일만 불러올 수 있습니다.`);
+        return;
+      }
+
+      if (!data.dynamic_allocation || typeof data.dynamic_allocation !== 'object' || Array.isArray(data.dynamic_allocation)) {
+        showError('올바르지 않은 파일 형식입니다.');
+        return;
+      }
+
       const importedHoldings = data.holdings.map((holding, index) => (
-        normalizeImportedHolding(holding, isV1, index)
+        normalizeImportedHolding(holding, index)
       ));
 
       // 예산 복원
@@ -1582,10 +1598,7 @@ function importData(e) {
       updateRatioBadge();
       scheduleDynamicAllocationUpdate();
 
-      const msg = isV1
-        ? `${data.holdings.length}개 데이터를 불러왔습니다 (v1 → KR 시장 자동 적용)`
-        : `${data.holdings.length}개 데이터를 불러왔습니다`;
-      showToast(msg);
+      showToast(`${data.holdings.length}개 데이터를 불러왔습니다`);
 
     } catch (err) {
       showError(err.message || '파일을 읽는 중 오류가 발생했습니다.');
@@ -1996,5 +2009,6 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateTailRiskBudgetAllocation,
     normalizeImportedHolding,
     validateDynamicAllocationConfig,
+    importData,
   };
 }
